@@ -1,4 +1,4 @@
-﻿# Скрипт для последовательного запуска всех модулей проекта
+# Скрипт для последовательного запуска всех модулей проекта
 # Запускает: Parser -> Backend -> Frontend
 #
 # Параметры:
@@ -111,7 +111,8 @@ function Build-Parser {
         Write-Success "✓ Parser успешно собран"
         return $true
         
-    } catch {
+    }
+    catch {
         Write-Error-Custom "Критическая ошибка при сборке Parser: $_"
         Pop-Location
         return $false
@@ -155,7 +156,8 @@ function Build-Backend {
         Write-Success "✓ Backend успешно собран"
         return $true
         
-    } catch {
+    }
+    catch {
         Write-Error-Custom "Критическая ошибка при сборке Backend: $_"
         Pop-Location
         return $false
@@ -198,7 +200,8 @@ function Update-BackendMigrations {
         Write-Success "✓ Миграции успешно применены"
         return $true
         
-    } catch {
+    }
+    catch {
         Write-Error-Custom "Критическая ошибка при применении миграций: $_"
         Pop-Location
         return $false
@@ -260,9 +263,39 @@ function Start-Module {
         return $null
     }
     
+    # Разрешаем команду в полный путь и корректно запускаем .ps1/.cmd/.bat
+    $resolvedCommand = $null
+    if (Test-Path $Command) {
+        $resolvedCommand = (Resolve-Path $Command).Path
+    }
+    elseif ($commandExists.Path) {
+        $resolvedCommand = $commandExists.Path
+    }
+    elseif ($commandExists.Source) {
+        $resolvedCommand = $commandExists.Source
+    }
+    else {
+        $resolvedCommand = $Command
+    }
+
+    $resolvedExt = [System.IO.Path]::GetExtension($resolvedCommand).ToLowerInvariant()
+
     $processInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $processInfo.FileName = $Command
-    $processInfo.Arguments = $Arguments -join ' '
+    if ($resolvedExt -eq ".ps1") {
+        # ps1 нельзя запускать как exe — запускаем через powershell
+        $pwsh = (Get-Command powershell -ErrorAction SilentlyContinue)
+        $processInfo.FileName = if ($pwsh) { $pwsh.Source } else { "powershell" }
+        $processInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$resolvedCommand`" " + ($Arguments -join ' ')
+    }
+    elseif ($resolvedExt -in @(".cmd", ".bat")) {
+        # cmd/bat запускаем через cmd.exe
+        $processInfo.FileName = $env:ComSpec
+        $processInfo.Arguments = "/c `"$resolvedCommand`" " + ($Arguments -join ' ')
+    }
+    else {
+        $processInfo.FileName = $resolvedCommand
+        $processInfo.Arguments = $Arguments -join ' '
+    }
     $processInfo.WorkingDirectory = $WorkingDirectory
     $processInfo.UseShellExecute = $false
     $processInfo.RedirectStandardOutput = $true
@@ -330,15 +363,16 @@ function Start-Module {
         }
         
         return @{
-            Process = $process
-            Name = $Name
+            Process       = $process
+            Name          = $Name
             OutputBuilder = $outputBuilder
-            ErrorBuilder = $errorBuilder
-            OutputEvent = $outputEvent
-            ErrorEvent = $errorEvent
+            ErrorBuilder  = $errorBuilder
+            OutputEvent   = $outputEvent
+            ErrorEvent    = $errorEvent
         }
         
-    } catch {
+    }
+    catch {
         Write-Error-Custom "Критическая ошибка при запуске $Name : $_"
         Write-Error-Custom "Детали ошибки: $($_.Exception.Message)"
         Unregister-Event -SourceIdentifier $outputEvent.Name -ErrorAction SilentlyContinue
@@ -366,7 +400,8 @@ try {
     }
     
     # 1. Запуск Parser
-    $parserPath = Join-Path $ScriptRoot "backend_and_parser\src\parser\Parser"
+    # Реальный путь к CMakeLists парсера и сборке
+    $parserPath = Join-Path $ScriptRoot "backend_and_parser\src\parser\Parser\backend\parser"
     $parserExe = Join-Path $parserPath "parser-server.exe"
     $parserBuildPath = Join-Path $parserPath "build\parser-server.exe"
     $parserBuildReleasePath = Join-Path $parserPath "build\Release\parser-server.exe"
@@ -379,7 +414,8 @@ try {
     
     if ($BuildParser) {
         $parserNeedsBuild = $true
-    } elseif (-not $parserExists) {
+    }
+    elseif (-not $parserExists) {
         # Если исполняемый файл не найден, проверяем наличие build директории
         if (-not (Test-Path $parserBuildDir) -or ((Get-ChildItem $parserBuildDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue).Count -eq 0)) {
             Write-Warning-Custom "Parser не найден. Используйте флаг -BuildParser для сборки."
@@ -390,7 +426,8 @@ try {
         Write-Info ""
         if (-not (Build-Parser -ParserPath $parserPath)) {
             Write-Warning-Custom "Не удалось собрать Parser, пропускаем запуск..."
-        } else {
+        }
+        else {
             Write-Info ""
         }
     }
@@ -399,13 +436,17 @@ try {
     $parserExecutable = $null
     if (Test-Path $parserExe) {
         $parserExecutable = $parserExe
-    } elseif (Test-Path $parserBuildReleasePath) {
+    }
+    elseif (Test-Path $parserBuildReleasePath) {
         $parserExecutable = $parserBuildReleasePath
-    } elseif (Test-Path $parserBuildDebugPath) {
+    }
+    elseif (Test-Path $parserBuildDebugPath) {
         $parserExecutable = $parserBuildDebugPath
-    } elseif (Test-Path $parserBuildPath) {
+    }
+    elseif (Test-Path $parserBuildPath) {
         $parserExecutable = $parserBuildPath
-    } else {
+    }
+    else {
         # Ищем любой .exe файл в build директории
         $foundExe = Get-ChildItem -Path $parserBuildDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($foundExe) {
@@ -421,10 +462,12 @@ try {
             -Port 8080
         if ($parserProcess) {
             $processes += $parserProcess
-        } else {
+        }
+        else {
             Write-Warning-Custom "Не удалось запустить Parser, продолжаем..."
         }
-    } else {
+    }
+    else {
         Write-Warning-Custom "Parser не найден. Пропускаем запуск Parser."
         Write-Info "  Ожидаемые пути:"
         Write-Info "    - $parserExe"
@@ -446,7 +489,8 @@ try {
             Write-Info ""
             if (-not (Update-BackendMigrations -BackendPath $backendPath)) {
                 Write-Warning-Custom "Не удалось применить миграции, продолжаем запуск..."
-            } else {
+            }
+            else {
                 Write-Info ""
             }
         }
@@ -456,7 +500,8 @@ try {
             Write-Info ""
             if (-not (Build-Backend -BackendPath $backendPath)) {
                 Write-Warning-Custom "Не удалось собрать Backend, продолжаем запуск..."
-            } else {
+            }
+            else {
                 Write-Info ""
             }
         }
@@ -464,7 +509,8 @@ try {
         $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
         if (-not $dotnetCommand) {
             Write-Error-Custom "Ошибка: .NET SDK не найден. Установите .NET SDK для запуска Backend."
-        } else {
+        }
+        else {
             $backendProcess = Start-Module -Name "Backend" `
                 -WorkingDirectory $backendPath `
                 -Command "dotnet" `
@@ -472,11 +518,13 @@ try {
                 -Port 5143
             if ($backendProcess) {
                 $processes += $backendProcess
-            } else {
+            }
+            else {
                 Write-Error-Custom "Не удалось запустить Backend!"
             }
         }
-    } else {
+    }
+    else {
         Write-Error-Custom "Ошибка: Backend проект не найден: $backendProject"
     }
     
@@ -491,7 +539,25 @@ try {
         $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
         if (-not $npmCommand) {
             Write-Error-Custom "Ошибка: npm не найден. Установите Node.js для запуска Frontend."
-        } else {
+        }
+        else {
+            # Убеждаемся, что зависимости установлены (vite приходит как devDependency)
+            $nodeModulesDir = Join-Path $frontendPath "node_modules"
+            $viteBin = Join-Path $nodeModulesDir ".bin\vite.cmd"
+            if (-not (Test-Path $viteBin)) {
+                Write-Info "Зависимости Frontend не найдены (vite отсутствует). Устанавливаю зависимости..."
+                Push-Location $frontendPath
+                try {
+                    & npm install 2>&1 | ForEach-Object { Write-Host $_ }
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Error-Custom "Ошибка: не удалось установить зависимости Frontend (npm exit code: $LASTEXITCODE)"
+                    }
+                }
+                finally {
+                    Pop-Location
+                }
+            }
+
             $frontendProcess = Start-Module -Name "Frontend" `
                 -WorkingDirectory $frontendPath `
                 -Command "npm" `
@@ -499,11 +565,13 @@ try {
                 -Port 5173
             if ($frontendProcess) {
                 $processes += $frontendProcess
-            } else {
+            }
+            else {
                 Write-Error-Custom "Не удалось запустить Frontend!"
             }
         }
-    } else {
+    }
+    else {
         Write-Error-Custom "Ошибка: Frontend package.json не найден: $packageJson"
     }
     
@@ -556,15 +624,18 @@ try {
                 break
             }
         }
-    } catch {
+    }
+    catch {
         # Пользователь нажал Ctrl+C или произошла ошибка
         Write-Info ""
         Write-Warning-Custom "Остановка всех модулей..."
     }
     
-} catch {
+}
+catch {
     Write-Error-Custom "Критическая ошибка: $_"
-} finally {
+}
+finally {
     # Останавливаем все процессы
     Write-Info ""
     Write-Info "Остановка всех модулей..."
@@ -576,7 +647,8 @@ try {
                 $proc.Process.Kill()
                 $proc.Process.WaitForExit(5000)
                 Write-Success "✓ $($proc.Name) остановлен"
-            } catch {
+            }
+            catch {
                 Write-Warning-Custom "Не удалось корректно остановить $($proc.Name): $_"
             }
         }
