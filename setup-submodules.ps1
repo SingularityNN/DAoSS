@@ -212,6 +212,18 @@ try {
                 } else {
                     Write-Success "✓ backend_and_parser $($switchResult.Message)"
                 }
+                
+                # Инициализируем подмодули внутри backend_and_parser
+                Write-Info "Инициализация подмодулей внутри backend_and_parser..."
+                $submoduleResult = git submodule update --init --recursive 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Success "✓ Подмодули backend_and_parser инициализированы"
+                } else {
+                    Write-Warning-Custom "Предупреждение: не удалось инициализировать подмодули backend_and_parser"
+                    if ($Verbose) {
+                        Write-Host $submoduleResult
+                    }
+                }
             } else {
                 Write-Error-Custom "Ошибка: $($switchResult.Message)"
                 exit 1
@@ -228,35 +240,64 @@ try {
         Write-Info ""
     }
 
-    # Шаг 3: Переключение вложенного подмодуля src/parser/Parser на ветку main
+    # Шаг 3: Переключение вложенного подмодуля src/parser/Parser на ветку http-server_wip
     $nestedSubmodulePath = "backend_and_parser\src\parser\Parser"
-    if (Test-Path $nestedSubmodulePath) {
-        Write-Info "Шаг 3: Переключение вложенного подмодуля Parser на ветку main..."
-        Push-Location $nestedSubmodulePath
-        
-        try {
-            if (-not (Test-GitRepository)) {
-                Write-Warning-Custom "Предупреждение: Parser не является git репозиторием, пропускаем..."
-            } else {
-                $switchResult = Switch-ToBranch -BranchName "main" -Context "Parser"
-                if ($switchResult.Success) {
-                    if ($switchResult.AlreadyOnBranch) {
-                        Write-Success "✓ Parser уже на ветке main"
-                    } else {
-                        Write-Success "✓ Parser $($switchResult.Message)"
-                    }
+    if (Test-Path "backend_and_parser") {
+        # Проверяем, инициализирован ли подмодуль
+        if (-not (Test-Path $nestedSubmodulePath)) {
+            Write-Warning-Custom "Директория $nestedSubmodulePath не найдена."
+            Write-Info "Попытка инициализации подмодулей backend_and_parser..."
+            Push-Location "backend_and_parser"
+            try {
+                $submoduleResult = git submodule update --init --recursive 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Success "✓ Подмодули backend_and_parser инициализированы"
                 } else {
-                    Write-Warning-Custom "Предупреждение: $($switchResult.Message). Продолжаем работу..."
+                    Write-Warning-Custom "Не удалось инициализировать подмодули:"
+                    if ($Verbose) {
+                        Write-Host $submoduleResult
+                    }
                 }
+            } finally {
+                Pop-Location
             }
-        } catch {
-            Write-Warning-Custom "Предупреждение при работе с Parser: $_. Продолжаем работу..."
-        } finally {
-            Pop-Location
         }
-        Write-Info ""
+        
+        if (Test-Path $nestedSubmodulePath) {
+            Write-Info "Шаг 3: Переключение вложенного подмодуля Parser на ветку http-server_wip..."
+            Push-Location $nestedSubmodulePath
+            
+            try {
+                if (-not (Test-GitRepository)) {
+                    Write-Warning-Custom "Предупреждение: Parser не является git репозиторием."
+                    Write-Info "Возможно, подмодуль не был правильно инициализирован."
+                    Write-Info "Попробуйте выполнить вручную:"
+                    Write-Info "  cd backend_and_parser"
+                    Write-Info "  git submodule update --init --recursive"
+                } else {
+                    $switchResult = Switch-ToBranch -BranchName "http-server_wip" -Context "Parser"
+                    if ($switchResult.Success) {
+                        if ($switchResult.AlreadyOnBranch) {
+                            Write-Success "✓ Parser уже на ветке http-server_wip"
+                        } else {
+                            Write-Success "✓ Parser $($switchResult.Message)"
+                        }
+                    } else {
+                        Write-Warning-Custom "Предупреждение: $($switchResult.Message). Продолжаем работу..."
+                    }
+                }
+            } catch {
+                Write-Warning-Custom "Предупреждение при работе с Parser: $_. Продолжаем работу..."
+            } finally {
+                Pop-Location
+            }
+            Write-Info ""
+        } else {
+            Write-Warning-Custom "Директория $nestedSubmodulePath не найдена после инициализации, пропускаем..."
+            Write-Info ""
+        }
     } else {
-        Write-Warning-Custom "Директория $nestedSubmodulePath не найдена, пропускаем..."
+        Write-Warning-Custom "Директория backend_and_parser не найдена, пропускаем..."
         Write-Info ""
     }
 
