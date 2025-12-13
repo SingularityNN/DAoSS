@@ -283,10 +283,12 @@ try {
 
     Write-Success "=== Настройка подмодулей завершена успешно! ==="
 
-} catch {
+}
+catch {
     Write-Error-Custom "Критическая ошибка: $_"
     exit 1
-} finally {
+}
+finally {
     # Возвращаемся в исходную директорию
     Set-Location $OriginalLocation
 }
