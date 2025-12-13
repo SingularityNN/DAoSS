@@ -1,5 +1,6 @@
-# Скрипт для автоматизации инициализации и настройки подмодулей
+﻿# Скрипт для автоматизации инициализации и настройки подмодулей
 # Автоматически переключает подмодули на нужные ветки
+# Кодировка: UTF-8 with BOM
 
 param(
     [switch]$Verbose,
@@ -153,7 +154,8 @@ try {
                 exit 1
             }
             Write-Info ""
-        } else {
+        }
+        else {
             Write-Error-Custom "Ошибка: Git не найден в PATH."
             Write-Info ""
             Write-Info "Варианты решения:"
@@ -167,7 +169,8 @@ try {
             Write-Info ""
             exit 1
         }
-    } else {
+    }
+    else {
         Write-Verbose-Custom "Git найден в PATH: $($gitCommand.Source)"
     }
     Write-Info ""
@@ -209,7 +212,8 @@ try {
             if ($switchResult.Success) {
                 if ($switchResult.AlreadyOnBranch) {
                     Write-Success "✓ backend_and_parser уже на ветке backend_and_parser"
-                } else {
+                }
+                else {
                     Write-Success "✓ backend_and_parser $($switchResult.Message)"
                 }
                 
@@ -218,24 +222,29 @@ try {
                 $submoduleResult = git submodule update --init --recursive 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-Success "✓ Подмодули backend_and_parser инициализированы"
-                } else {
+                }
+                else {
                     Write-Warning-Custom "Предупреждение: не удалось инициализировать подмодули backend_and_parser"
                     if ($Verbose) {
                         Write-Host $submoduleResult
                     }
                 }
-            } else {
+            }
+            else {
                 Write-Error-Custom "Ошибка: $($switchResult.Message)"
                 exit 1
             }
-        } catch {
+        }
+        catch {
             Write-Error-Custom "Критическая ошибка при работе с backend_and_parser: $_"
             exit 1
-        } finally {
+        }
+        finally {
             Pop-Location
         }
         Write-Info ""
-    } else {
+    }
+    else {
         Write-Warning-Custom "Директория backend_and_parser не найдена, пропускаем..."
         Write-Info ""
     }
@@ -252,13 +261,15 @@ try {
                 $submoduleResult = git submodule update --init --recursive 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-Success "✓ Подмодули backend_and_parser инициализированы"
-                } else {
+                }
+                else {
                     Write-Warning-Custom "Не удалось инициализировать подмодули:"
                     if ($Verbose) {
                         Write-Host $submoduleResult
                     }
                 }
-            } finally {
+            }
+            finally {
                 Pop-Location
             }
         }
@@ -274,39 +285,48 @@ try {
                     Write-Info "Попробуйте выполнить вручную:"
                     Write-Info "  cd backend_and_parser"
                     Write-Info "  git submodule update --init --recursive"
-                } else {
+                }
+                else {
                     $switchResult = Switch-ToBranch -BranchName "http-server_wip" -Context "Parser"
                     if ($switchResult.Success) {
                         if ($switchResult.AlreadyOnBranch) {
                             Write-Success "✓ Parser уже на ветке http-server_wip"
-                        } else {
+                        }
+                        else {
                             Write-Success "✓ Parser $($switchResult.Message)"
                         }
-                    } else {
+                    }
+                    else {
                         Write-Warning-Custom "Предупреждение: $($switchResult.Message). Продолжаем работу..."
                     }
                 }
-            } catch {
+            }
+            catch {
                 Write-Warning-Custom "Предупреждение при работе с Parser: $_. Продолжаем работу..."
-            } finally {
+            }
+            finally {
                 Pop-Location
             }
             Write-Info ""
-        } else {
+        }
+        else {
             Write-Warning-Custom "Директория $nestedSubmodulePath не найдена после инициализации, пропускаем..."
             Write-Info ""
         }
-    } else {
+    }
+    else {
         Write-Warning-Custom "Директория backend_and_parser не найдена, пропускаем..."
         Write-Info ""
     }
 
     Write-Success "=== Настройка подмодулей завершена успешно! ==="
 
-} catch {
+}
+catch {
     Write-Error-Custom "Критическая ошибка: $_"
     exit 1
-} finally {
+}
+finally {
     # Возвращаемся в исходную директорию
     Set-Location $OriginalLocation
 }
