@@ -44,6 +44,7 @@ function Write-Verbose-Custom {
     }
 }
 
+<<<<<<< HEAD
 # Цвета для вывода логов модулей
 $script:ModuleColors = @{
     "Parser"   = "Magenta"
@@ -94,6 +95,8 @@ function Write-FastColor {
     [Console]::ForegroundColor = $originalColor
 }
 
+=======
+>>>>>>> a55af2c (added powershell instruments)
 # Функция для сборки парсера
 function Build-Parser {
     param([string]$ParserPath)
@@ -161,8 +164,12 @@ function Build-Parser {
         Write-Success "✓ Parser успешно собран"
         return $true
         
+<<<<<<< HEAD
     }
     catch {
+=======
+    } catch {
+>>>>>>> a55af2c (added powershell instruments)
         Write-Error-Custom "Критическая ошибка при сборке Parser: $_"
         Pop-Location
         return $false
@@ -206,8 +213,12 @@ function Build-Backend {
         Write-Success "✓ Backend успешно собран"
         return $true
         
+<<<<<<< HEAD
     }
     catch {
+=======
+    } catch {
+>>>>>>> a55af2c (added powershell instruments)
         Write-Error-Custom "Критическая ошибка при сборке Backend: $_"
         Pop-Location
         return $false
@@ -238,7 +249,11 @@ function Update-BackendMigrations {
         Push-Location $BackendPath
         
         Write-Info "Применяю миграции к базе данных..."
+<<<<<<< HEAD
         $updateResult = & dotnet ef database update --startup-project DAOSS.WebApi.csproj --project Infrastructure/DAOSS.Infrastructure.csproj 2>&1
+=======
+        $updateResult = & dotnet ef database update --project DAOSS.WebApi.csproj 2>&1
+>>>>>>> a55af2c (added powershell instruments)
         if ($LASTEXITCODE -ne 0) {
             Write-Error-Custom "Ошибка при применении миграций:"
             Write-Host $updateResult -ForegroundColor Red
@@ -250,8 +265,12 @@ function Update-BackendMigrations {
         Write-Success "✓ Миграции успешно применены"
         return $true
         
+<<<<<<< HEAD
     }
     catch {
+=======
+    } catch {
+>>>>>>> a55af2c (added powershell instruments)
         Write-Error-Custom "Критическая ошибка при применении миграций: $_"
         Pop-Location
         return $false
@@ -313,6 +332,7 @@ function Start-Module {
         return $null
     }
     
+<<<<<<< HEAD
     # Разрешаем команду в полный путь и корректно запускаем .ps1/.cmd/.bat
     $resolvedCommand = $null
     if (Test-Path $Command) {
@@ -346,6 +366,11 @@ function Start-Module {
         $processInfo.FileName = $resolvedCommand
         $processInfo.Arguments = $Arguments -join ' '
     }
+=======
+    $processInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $processInfo.FileName = $Command
+    $processInfo.Arguments = $Arguments -join ' '
+>>>>>>> a55af2c (added powershell instruments)
     $processInfo.WorkingDirectory = $WorkingDirectory
     $processInfo.UseShellExecute = $false
     $processInfo.RedirectStandardOutput = $true
@@ -360,6 +385,7 @@ function Start-Module {
     $errorBuilder = New-Object System.Text.StringBuilder
     
     # Обработчики событий для перехвата вывода
+<<<<<<< HEAD
     # Используем прямой доступ к консоли для максимальной производительности
     $color = $script:ModuleColors[$Name]
     $consoleColor = $script:ColorMap[$color]
@@ -395,6 +421,21 @@ function Start-Module {
             [Console]::ForegroundColor = $originalColor
         }
     } -MessageData @{ Builder = $errorBuilder; Name = $Name; Color = $color; ConsoleColor = $consoleColor }
+=======
+    $moduleName = $Name
+    $outputEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action {
+        if ($EventArgs.Data) {
+            [void]$Event.MessageData.AppendLine($EventArgs.Data)
+        }
+    } -MessageData $outputBuilder
+    
+    $errorEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action {
+        if ($EventArgs.Data) {
+            [void]$Event.MessageData.AppendLine($EventArgs.Data)
+            Write-Host "[$moduleName ERROR] $($EventArgs.Data)" -ForegroundColor Red
+        }
+    } -MessageData $errorBuilder
+>>>>>>> a55af2c (added powershell instruments)
     
     try {
         Write-Info "Запускаю $Name..."
@@ -435,6 +476,7 @@ function Start-Module {
         }
         
         return @{
+<<<<<<< HEAD
             Process       = $process
             Name          = $Name
             OutputBuilder = $outputBuilder
@@ -445,6 +487,17 @@ function Start-Module {
         
     }
     catch {
+=======
+            Process = $process
+            Name = $Name
+            OutputBuilder = $outputBuilder
+            ErrorBuilder = $errorBuilder
+            OutputEvent = $outputEvent
+            ErrorEvent = $errorEvent
+        }
+        
+    } catch {
+>>>>>>> a55af2c (added powershell instruments)
         Write-Error-Custom "Критическая ошибка при запуске $Name : $_"
         Write-Error-Custom "Детали ошибки: $($_.Exception.Message)"
         Unregister-Event -SourceIdentifier $outputEvent.Name -ErrorAction SilentlyContinue
@@ -472,8 +525,12 @@ try {
     }
     
     # 1. Запуск Parser
+<<<<<<< HEAD
     # Реальный путь к CMakeLists парсера и сборке
     $parserPath = Join-Path $ScriptRoot "backend_and_parser\src\parser\Parser\backend\parser"
+=======
+    $parserPath = Join-Path $ScriptRoot "backend_and_parser\src\parser\Parser"
+>>>>>>> a55af2c (added powershell instruments)
     $parserExe = Join-Path $parserPath "parser-server.exe"
     $parserBuildPath = Join-Path $parserPath "build\parser-server.exe"
     $parserBuildReleasePath = Join-Path $parserPath "build\Release\parser-server.exe"
@@ -486,8 +543,12 @@ try {
     
     if ($BuildParser) {
         $parserNeedsBuild = $true
+<<<<<<< HEAD
     }
     elseif (-not $parserExists) {
+=======
+    } elseif (-not $parserExists) {
+>>>>>>> a55af2c (added powershell instruments)
         # Если исполняемый файл не найден, проверяем наличие build директории
         if (-not (Test-Path $parserBuildDir) -or ((Get-ChildItem $parserBuildDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue).Count -eq 0)) {
             Write-Warning-Custom "Parser не найден. Используйте флаг -BuildParser для сборки."
@@ -498,8 +559,12 @@ try {
         Write-Info ""
         if (-not (Build-Parser -ParserPath $parserPath)) {
             Write-Warning-Custom "Не удалось собрать Parser, пропускаем запуск..."
+<<<<<<< HEAD
         }
         else {
+=======
+        } else {
+>>>>>>> a55af2c (added powershell instruments)
             Write-Info ""
         }
     }
@@ -508,6 +573,7 @@ try {
     $parserExecutable = $null
     if (Test-Path $parserExe) {
         $parserExecutable = $parserExe
+<<<<<<< HEAD
     }
     elseif (Test-Path $parserBuildReleasePath) {
         $parserExecutable = $parserBuildReleasePath
@@ -519,6 +585,15 @@ try {
         $parserExecutable = $parserBuildPath
     }
     else {
+=======
+    } elseif (Test-Path $parserBuildReleasePath) {
+        $parserExecutable = $parserBuildReleasePath
+    } elseif (Test-Path $parserBuildDebugPath) {
+        $parserExecutable = $parserBuildDebugPath
+    } elseif (Test-Path $parserBuildPath) {
+        $parserExecutable = $parserBuildPath
+    } else {
+>>>>>>> a55af2c (added powershell instruments)
         # Ищем любой .exe файл в build директории
         $foundExe = Get-ChildItem -Path $parserBuildDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($foundExe) {
@@ -534,12 +609,19 @@ try {
             -Port 8080
         if ($parserProcess) {
             $processes += $parserProcess
+<<<<<<< HEAD
         }
         else {
             Write-Warning-Custom "Не удалось запустить Parser, продолжаем..."
         }
     }
     else {
+=======
+        } else {
+            Write-Warning-Custom "Не удалось запустить Parser, продолжаем..."
+        }
+    } else {
+>>>>>>> a55af2c (added powershell instruments)
         Write-Warning-Custom "Parser не найден. Пропускаем запуск Parser."
         Write-Info "  Ожидаемые пути:"
         Write-Info "    - $parserExe"
@@ -561,8 +643,12 @@ try {
             Write-Info ""
             if (-not (Update-BackendMigrations -BackendPath $backendPath)) {
                 Write-Warning-Custom "Не удалось применить миграции, продолжаем запуск..."
+<<<<<<< HEAD
             }
             else {
+=======
+            } else {
+>>>>>>> a55af2c (added powershell instruments)
                 Write-Info ""
             }
         }
@@ -572,8 +658,12 @@ try {
             Write-Info ""
             if (-not (Build-Backend -BackendPath $backendPath)) {
                 Write-Warning-Custom "Не удалось собрать Backend, продолжаем запуск..."
+<<<<<<< HEAD
             }
             else {
+=======
+            } else {
+>>>>>>> a55af2c (added powershell instruments)
                 Write-Info ""
             }
         }
@@ -581,8 +671,12 @@ try {
         $dotnetCommand = Get-Command dotnet -ErrorAction SilentlyContinue
         if (-not $dotnetCommand) {
             Write-Error-Custom "Ошибка: .NET SDK не найден. Установите .NET SDK для запуска Backend."
+<<<<<<< HEAD
         }
         else {
+=======
+        } else {
+>>>>>>> a55af2c (added powershell instruments)
             $backendProcess = Start-Module -Name "Backend" `
                 -WorkingDirectory $backendPath `
                 -Command "dotnet" `
@@ -590,6 +684,7 @@ try {
                 -Port 5143
             if ($backendProcess) {
                 $processes += $backendProcess
+<<<<<<< HEAD
             }
             else {
                 Write-Error-Custom "Не удалось запустить Backend!"
@@ -597,6 +692,13 @@ try {
         }
     }
     else {
+=======
+            } else {
+                Write-Error-Custom "Не удалось запустить Backend!"
+            }
+        }
+    } else {
+>>>>>>> a55af2c (added powershell instruments)
         Write-Error-Custom "Ошибка: Backend проект не найден: $backendProject"
     }
     
@@ -611,6 +713,7 @@ try {
         $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
         if (-not $npmCommand) {
             Write-Error-Custom "Ошибка: npm не найден. Установите Node.js для запуска Frontend."
+<<<<<<< HEAD
         }
         else {
             # Убеждаемся, что зависимости установлены (vite приходит как devDependency)
@@ -644,6 +747,21 @@ try {
         }
     }
     else {
+=======
+        } else {
+            $frontendProcess = Start-Module -Name "Frontend" `
+                -WorkingDirectory $frontendPath `
+                -Command "npm" `
+                -Arguments @("run", "dev") `
+                -Port 5173
+            if ($frontendProcess) {
+                $processes += $frontendProcess
+            } else {
+                Write-Error-Custom "Не удалось запустить Frontend!"
+            }
+        }
+    } else {
+>>>>>>> a55af2c (added powershell instruments)
         Write-Error-Custom "Ошибка: Frontend package.json не найден: $packageJson"
     }
     
@@ -696,18 +814,28 @@ try {
                 break
             }
         }
+<<<<<<< HEAD
     }
     catch {
+=======
+    } catch {
+>>>>>>> a55af2c (added powershell instruments)
         # Пользователь нажал Ctrl+C или произошла ошибка
         Write-Info ""
         Write-Warning-Custom "Остановка всех модулей..."
     }
     
+<<<<<<< HEAD
 }
 catch {
     Write-Error-Custom "Критическая ошибка: $_"
 }
 finally {
+=======
+} catch {
+    Write-Error-Custom "Критическая ошибка: $_"
+} finally {
+>>>>>>> a55af2c (added powershell instruments)
     # Останавливаем все процессы
     Write-Info ""
     Write-Info "Остановка всех модулей..."
@@ -719,8 +847,12 @@ finally {
                 $proc.Process.Kill()
                 $proc.Process.WaitForExit(5000)
                 Write-Success "✓ $($proc.Name) остановлен"
+<<<<<<< HEAD
             }
             catch {
+=======
+            } catch {
+>>>>>>> a55af2c (added powershell instruments)
                 Write-Warning-Custom "Не удалось корректно остановить $($proc.Name): $_"
             }
         }
