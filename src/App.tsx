@@ -1,20 +1,69 @@
 import { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, Link } from 'react-router-dom'
 import LoginPage from './components/LoginPage'
+import HomePage from './components/HomePage'
 import UserPanel from './components/UserPanel'
 import FlowchartEditor from './components/FlowchartEditor'
+import ProjectsListPage from './pages/ProjectsListPage'
+import ProjectCreatePage from './pages/ProjectCreatePage'
+import ProjectDetailsPage from './pages/ProjectDetailsPage'
+import InvitationsPageWrapper from './pages/InvitationsPage'
 import './App.css'
 import { api } from './services/api'
 import { getToken, removeToken } from './utils/auth'
 
-function App() {
+// Компонент для защищенных маршрутов
+function ProtectedRoute({ children, isAuthenticated }: { children: React.ReactNode; isAuthenticated: boolean }) {
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />
+  }
+  return <>{children}</>
+}
+
+// Компонент навигации
+function Navigation({ username, onLogout }: { username: string; onLogout: () => void }) {
+  const location = useLocation()
+
+  const isActive = (path: string) => {
+    if (path === '/') {
+      return location.pathname === '/'
+    }
+    return location.pathname.startsWith(path)
+  }
+
+  return (
+    <>
+      <UserPanel username={username} status="пользователь" onLogout={onLogout} />
+      <nav className="main-navigation">
+        <Link
+          to="/projects"
+          className={`nav-button ${isActive('/projects') ? 'active' : ''}`}
+        >
+          Проекты
+        </Link>
+        <Link
+          to="/invitations"
+          className={`nav-button ${isActive('/invitations') ? 'active' : ''}`}
+        >
+          Приглашения
+        </Link>
+      </nav>
+    </>
+  )
+}
+
+// Основной компонент приложения с роутингом
+function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [username, setUsername] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  const location = useLocation()
+  const navigate = useNavigate()
 
   useEffect(() => {
     const checkAuth = async () => {
       const token = getToken()
-      
+
       if (!token) {
         setIsLoading(false)
         return
@@ -23,7 +72,7 @@ function App() {
       try {
         // Проверяем валидность токена
         const isValid = await api.validateToken()
-        
+
         if (isValid) {
           // Получаем информацию о пользователе
           const userInfo = await api.getMe()
@@ -58,39 +107,133 @@ function App() {
     }
   }, [])
 
-  const handleLogin = (userName: string) => {
+  const handleLogin = async (userName: string) => {
     setUsername(userName)
     setIsAuthenticated(true)
+    try {
+      const userInfo = await api.getMe()
+      setUsername(userInfo.name || userInfo.email || 'Пользователь')
+    } catch (err) {
+      console.error('Failed to get user info:', err)
+    }
+    // Перенаправляем на страницу проектов после входа
+    navigate('/projects')
   }
 
   const handleLogout = () => {
     removeToken()
     setIsAuthenticated(false)
     setUsername('')
+    navigate('/')
   }
 
   if (isLoading) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh' 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh'
       }}>
         <p>Загрузка...</p>
       </div>
     )
   }
 
-  if (!isAuthenticated) {
-    return <LoginPage onLogin={handleLogin} />
-  }
-
   return (
-    <>
-      <UserPanel username={username} status="пользователь" onLogout={handleLogout} />
-      <FlowchartEditor />
-    </>
+    <Routes>
+      {/* Публичные маршруты */}
+      <Route
+        path="/"
+        element={
+          isAuthenticated ? (
+            <Navigate to="/projects" replace />
+          ) : (
+            <HomePage />
+          )
+        }
+      />
+      <Route
+        path="/login"
+        element={
+          isAuthenticated ? (
+            <Navigate to="/projects" replace />
+          ) : (
+            <LoginPage onLogin={handleLogin} />
+          )
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          isAuthenticated ? (
+            <Navigate to="/projects" replace />
+          ) : (
+            <Navigate to="/login?mode=register" replace />
+          )
+        }
+      />
+
+      {/* Защищенные маршруты */}
+      <Route
+        path="/projects"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated}>
+            <Navigation username={username} onLogout={handleLogout} />
+            <ProjectsListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/new"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated}>
+            <Navigation username={username} onLogout={handleLogout} />
+            <ProjectCreatePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:id"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated}>
+            <Navigation username={username} onLogout={handleLogout} />
+            <ProjectDetailsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/invitations"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated}>
+            <Navigation username={username} onLogout={handleLogout} />
+            <InvitationsPageWrapper />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Редактор блок-схем (если нужен отдельный маршрут) */}
+      <Route
+        path="/editor"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated}>
+            <Navigation username={username} onLogout={handleLogout} />
+            <FlowchartEditor />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Редирект для неизвестных маршрутов */}
+      <Route path="*" element={<Navigate to={isAuthenticated ? "/projects" : "/"} replace />} />
+    </Routes>
+  )
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   )
 }
 
