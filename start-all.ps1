@@ -188,7 +188,7 @@ function Update-BackendMigrations {
         Push-Location $BackendPath
         
         Write-Info "Применяю миграции к базе данных..."
-        $updateResult = & dotnet ef database update --project DAOSS.WebApi.csproj 2>&1
+        $updateResult = & dotnet ef database update --startup-project DAOSS.WebApi.csproj --project Infrastructure/DAOSS.Infrastructure.csproj 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Error-Custom "Ошибка при применении миграций:"
             Write-Host $updateResult -ForegroundColor Red
