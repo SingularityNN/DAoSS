@@ -318,29 +318,14 @@ function Start-Module {
     if (Test-Path $Command) {
         $resolvedCommand = (Resolve-Path $Command).Path
     }
-    elseif ($commandExists.Source) {
-        $resolvedCommand = $commandExists.Source
-    }
     elseif ($commandExists.Path) {
         $resolvedCommand = $commandExists.Path
     }
-    elseif ($commandExists.Definition -and (Test-Path $commandExists.Definition)) {
-        $resolvedCommand = $commandExists.Definition
+    elseif ($commandExists.Source) {
+        $resolvedCommand = $commandExists.Source
     }
     else {
-        # Пробуем найти .cmd/.bat/.exe версию команды в PATH
-        $extensions = @(".cmd", ".bat", ".exe", "")
-        foreach ($ext in $extensions) {
-            $cmdWithExt = $Command + $ext
-            $found = Get-Command $cmdWithExt -ErrorAction SilentlyContinue
-            if ($found -and $found.Source) {
-                $resolvedCommand = $found.Source
-                break
-            }
-        }
-        if (-not $resolvedCommand) {
-            $resolvedCommand = $Command
-        }
+        $resolvedCommand = $Command
     }
 
     $resolvedExt = [System.IO.Path]::GetExtension($resolvedCommand).ToLowerInvariant()
