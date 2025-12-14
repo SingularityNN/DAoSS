@@ -268,29 +268,14 @@ function Start-Module {
     if (Test-Path $Command) {
         $resolvedCommand = (Resolve-Path $Command).Path
     }
-    elseif ($commandExists.Source) {
-        $resolvedCommand = $commandExists.Source
-    }
     elseif ($commandExists.Path) {
         $resolvedCommand = $commandExists.Path
     }
-    elseif ($commandExists.Definition -and (Test-Path $commandExists.Definition)) {
-        $resolvedCommand = $commandExists.Definition
+    elseif ($commandExists.Source) {
+        $resolvedCommand = $commandExists.Source
     }
     else {
-        # Пробуем найти .cmd/.bat/.exe версию команды в PATH
-        $extensions = @(".cmd", ".bat", ".exe", "")
-        foreach ($ext in $extensions) {
-            $cmdWithExt = $Command + $ext
-            $found = Get-Command $cmdWithExt -ErrorAction SilentlyContinue
-            if ($found -and $found.Source) {
-                $resolvedCommand = $found.Source
-                break
-            }
-        }
-        if (-not $resolvedCommand) {
-            $resolvedCommand = $Command
-        }
+        $resolvedCommand = $Command
     }
 
     $resolvedExt = [System.IO.Path]::GetExtension($resolvedCommand).ToLowerInvariant()
@@ -563,7 +548,7 @@ try {
                 Write-Info "Зависимости Frontend не найдены (vite отсутствует). Устанавливаю зависимости..."
                 Push-Location $frontendPath
                 try {
-                    & npm install 2>&1 | ForEach-Object { Write-Host $_ }
+                    & cmd.exe /c npm install 2>&1 | ForEach-Object { Write-Host $_ }
                     if ($LASTEXITCODE -ne 0) {
                         Write-Error-Custom "Ошибка: не удалось установить зависимости Frontend (npm exit code: $LASTEXITCODE)"
                     }
@@ -575,8 +560,8 @@ try {
 
             $frontendProcess = Start-Module -Name "Frontend" `
                 -WorkingDirectory $frontendPath `
-                -Command "npm" `
-                -Arguments @("run", "dev") `
+                -Command "cmd.exe" `
+                -Arguments @("/c", "npm", "run", "dev") `
                 -Port 5173
             if ($frontendProcess) {
                 $processes += $frontendProcess
