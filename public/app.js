@@ -1,3 +1,9 @@
+// Prevent duplicate loading
+if (window._appJsLoaded) {
+    console.log('app.js already loaded, skipping...');
+} else {
+window._appJsLoaded = true;
+
 // Application State
 const state = {
     nodes: [
@@ -1293,3 +1299,4 @@ if (document.readyState === 'loading') {
     }
 }
 
+} // End of duplicate loading check
