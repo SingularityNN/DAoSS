@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { Invitation, SendInvitationDto } from '../../services/api';
 import { api } from '../../services/api';
 import InvitationForm from './InvitationForm';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import './InvitationsList.css';
 
 interface InvitationsListProps {
@@ -15,10 +16,18 @@ export default function InvitationsList({ projectId, canManage }: InvitationsLis
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [cancelConfirm, setCancelConfirm] = useState<{ isOpen: boolean; invitationId: string | null }>({ isOpen: false, invitationId: null });
+  const [userEmails, setUserEmails] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadInvitations();
   }, [projectId, statusFilter]);
+
+  useEffect(() => {
+    if (invitations.length > 0) {
+      loadUserEmails();
+    }
+  }, [invitations]);
 
   const loadInvitations = async () => {
     try {
@@ -33,6 +42,21 @@ export default function InvitationsList({ projectId, canManage }: InvitationsLis
     }
   };
 
+  const loadUserEmails = async () => {
+    const emails: Record<string, string> = {};
+    for (const invitation of invitations) {
+      if ((invitation as any).invitedUserId) {
+        try {
+          const user = await api.getUser((invitation as any).invitedUserId);
+          emails[(invitation as any).invitedUserId] = user.email;
+        } catch {
+          emails[(invitation as any).invitedUserId] = (invitation as any).invitedUserId; // Fallback to ID
+        }
+      }
+    }
+    setUserEmails(emails);
+  };
+
   const handleSendInvitation = async (dto: SendInvitationDto) => {
     try {
       await api.sendInvitation(projectId, dto);
@@ -43,15 +67,19 @@ export default function InvitationsList({ projectId, canManage }: InvitationsLis
     }
   };
 
-  const handleCancelInvitation = async (invitationId: string) => {
-    if (!confirm('Отменить приглашение?')) {
-      return;
-    }
+  const handleCancelInvitationClick = (invitationId: string) => {
+    setCancelConfirm({ isOpen: true, invitationId });
+  };
+
+  const handleCancelInvitationConfirm = async () => {
+    if (!cancelConfirm.invitationId) return;
 
     try {
-      await api.cancelInvitation(projectId, invitationId);
+      await api.cancelInvitation(projectId, cancelConfirm.invitationId);
+      setCancelConfirm({ isOpen: false, invitationId: null });
       loadInvitations();
     } catch (err) {
+      setCancelConfirm({ isOpen: false, invitationId: null });
       alert(err instanceof Error ? err.message : 'Не удалось отменить приглашение');
     }
   };
@@ -147,7 +175,7 @@ export default function InvitationsList({ projectId, canManage }: InvitationsLis
         <table className="invitations-table">
           <thead>
             <tr>
-              <th>ID приглашенного</th>
+              <th>Приглашенный пользователь</th>
               <th>Роль</th>
               <th>Статус</th>
               <th>Срок действия</th>
@@ -156,9 +184,11 @@ export default function InvitationsList({ projectId, canManage }: InvitationsLis
             </tr>
           </thead>
           <tbody>
-            {invitations.map((invitation) => (
+            {invitations.map((invitation) => {
+              const invitedUserId = (invitation as any).invitedUserId;
+              return (
               <tr key={invitation.id}>
-                <td>{invitation.invitedUserId}</td>
+                <td>{invitedUserId ? (userEmails[invitedUserId] || invitedUserId) : 'Неизвестно'}</td>
                 <td>
                   <span className={`role-badge role-${invitation.role}`}>
                     {invitation.role === 'admin' ? 'Администратор' : 'Ревьюер'}
@@ -175,7 +205,7 @@ export default function InvitationsList({ projectId, canManage }: InvitationsLis
                   <td>
                     {invitation.status === 'pending' && (
                       <button
-                        onClick={() => handleCancelInvitation(invitation.id)}
+                        onClick={() => handleCancelInvitationClick(invitation.id)}
                         className="cancel-button"
                       >
                         Отменить
@@ -187,10 +217,21 @@ export default function InvitationsList({ projectId, canManage }: InvitationsLis
                   </td>
                 )}
               </tr>
-            ))}
+            );
+            })}
           </tbody>
         </table>
       )}
+
+      <ConfirmDialog
+        isOpen={cancelConfirm.isOpen}
+        title="Отмена приглашения"
+        message="Отменить приглашение?"
+        onConfirm={handleCancelInvitationConfirm}
+        onCancel={() => setCancelConfirm({ isOpen: false, invitationId: null })}
+        confirmText="Отменить"
+        cancelText="Нет"
+      />
     </div>
   );
 }

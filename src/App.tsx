@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, Link } from 'react-router-dom'
 import LoginPage from './components/LoginPage'
 import HomePage from './components/HomePage'
-import UserPanel from './components/UserPanel'
 import FlowchartEditor from './components/FlowchartEditor'
 import ProjectsListPage from './pages/ProjectsListPage'
 import ProjectCreatePage from './pages/ProjectCreatePage'
 import ProjectDetailsPage from './pages/ProjectDetailsPage'
 import InvitationsPageWrapper from './pages/InvitationsPage'
+import ProfilePage from './pages/ProfilePage'
 import './App.css'
 import { api } from './services/api'
 import { getToken, removeToken } from './utils/auth'
@@ -21,7 +21,7 @@ function ProtectedRoute({ children, isAuthenticated }: { children: React.ReactNo
 }
 
 // Компонент навигации
-function Navigation({ username, onLogout }: { username: string; onLogout: () => void }) {
+function Navigation({ username }: { username: string }) {
   const location = useLocation()
 
   const isActive = (path: string) => {
@@ -32,9 +32,8 @@ function Navigation({ username, onLogout }: { username: string; onLogout: () => 
   }
 
   return (
-    <>
-      <UserPanel username={username} status="пользователь" onLogout={onLogout} />
-      <nav className="main-navigation">
+    <nav className="main-navigation">
+      <div className="nav-left">
         <Link
           to="/projects"
           className={`nav-button ${isActive('/projects') ? 'active' : ''}`}
@@ -47,8 +46,17 @@ function Navigation({ username, onLogout }: { username: string; onLogout: () => 
         >
           Приглашения
         </Link>
-      </nav>
-    </>
+      </div>
+      <div className="nav-right">
+        <span className="nav-username">{username}</span>
+        <Link
+          to="/profile"
+          className={`nav-button ${isActive('/profile') ? 'active' : ''}`}
+        >
+          Личный кабинет
+        </Link>
+      </div>
+    </nav>
   )
 }
 
@@ -193,7 +201,7 @@ function AppContent() {
         path="/projects"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated}>
-            <Navigation username={username} onLogout={handleLogout} />
+            <Navigation username={username} />
             <ProjectsListPage />
           </ProtectedRoute>
         }
@@ -202,7 +210,7 @@ function AppContent() {
         path="/projects/new"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated}>
-            <Navigation username={username} onLogout={handleLogout} />
+            <Navigation username={username} />
             <ProjectCreatePage />
           </ProtectedRoute>
         }
@@ -211,7 +219,7 @@ function AppContent() {
         path="/projects/:id"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated}>
-            <Navigation username={username} onLogout={handleLogout} />
+            <Navigation username={username} />
             <ProjectDetailsPage />
           </ProtectedRoute>
         }
@@ -220,8 +228,17 @@ function AppContent() {
         path="/invitations"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated}>
-            <Navigation username={username} onLogout={handleLogout} />
+            <Navigation username={username} />
             <InvitationsPageWrapper />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute isAuthenticated={isAuthenticated}>
+            <Navigation username={username} />
+            <ProfilePage />
           </ProtectedRoute>
         }
       />
@@ -231,7 +248,7 @@ function AppContent() {
         path="/editor"
         element={
           <ProtectedRoute isAuthenticated={isAuthenticated}>
-            <Navigation username={username} onLogout={handleLogout} />
+            <Navigation username={username} />
             <FlowchartEditor />
           </ProtectedRoute>
         }

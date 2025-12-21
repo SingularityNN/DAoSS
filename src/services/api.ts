@@ -206,10 +206,27 @@ export interface CreateSourceFileVersionDto {
   message?: string;
 }
 
+// User types
+export interface User {
+  id: string;
+  login: string;
+  email: string;
+  name: string;
+}
+
+// Language types
+export interface Language {
+  id: string;
+  code: string;
+  name: string;
+  versionHint?: string;
+  fileExtensions?: string;
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let errorMessage = 'Произошла ошибка';
-    
+
     try {
       const errorData: ApiError = await response.json();
       errorMessage = errorData.message || errorMessage;
@@ -224,45 +241,56 @@ async function handleResponse<T>(response: Response): Promise<T> {
         errorMessage = `Ошибка ${response.status}`;
       }
     }
-    
+
     throw new Error(errorMessage);
   }
-  
+
+  // Если ответ 204 No Content, возвращаем пустой объект
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  // Проверяем, есть ли контент
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    return {} as T;
+  }
+
   return response.json();
 }
 
 async function fetchWithAuth<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
-  
-  const headers: HeadersInit = {
+
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(options.headers as Record<string, string> || {}),
   };
-  
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  
+
   try {
     // Добавляем таймаут для fetch запроса
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 секунд таймаут
-    
+
     const response = await fetch(`${API_BASE_URL}${url}`, {
       ...options,
       headers,
       signal: controller.signal,
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     // Если токен невалидный, удаляем его
     if (response.status === 401) {
       removeToken();
       // Вызываем событие для обновления состояния авторизации
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }
-    
+
     return handleResponse<T>(response);
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -280,20 +308,20 @@ async function fetchWithoutAuth<T>(url: string, options: RequestInit = {}): Prom
     'Content-Type': 'application/json',
     ...options.headers,
   };
-  
+
   try {
     // Добавляем таймаут для fetch запроса
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 секунд таймаут
-    
+
     const response = await fetch(`${API_BASE_URL}${url}`, {
       ...options,
       headers,
       signal: controller.signal,
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     return handleResponse<T>(response);
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -393,7 +421,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({
         Name: dto.name,
-        Description: dto.description, // Всегда передаем строку (может быть пустой)
+        Description: dto.description?.trim() || null,
         OwnerId: dto.ownerId,
         Visibility: dto.visibility || 'private',
         DefaultLanguageId: dto.defaultLanguageId || '00000000-0000-0000-0000-000000000000',
@@ -407,7 +435,7 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({
         Name: dto.name,
-        Description: dto.description, // Всегда передаем строку (может быть пустой)
+        Description: dto.description?.trim() || null,
         OwnerId: dto.ownerId,
         Visibility: dto.visibility,
         DefaultLanguageId: dto.defaultLanguageId,
@@ -430,7 +458,7 @@ export const api = {
   },
 
   async getProjectInvitations(projectId: string, status?: string): Promise<Invitation[]> {
-    const url = status 
+    const url = status
       ? `/projects/${projectId}/invitations?status=${status}`
       : `/projects/${projectId}/invitations`;
     return fetchWithAuth<Invitation[]>(url, {
@@ -631,6 +659,32 @@ export const api = {
         Content: dto.content,
         Message: dto.message,
       }),
+    });
+  },
+
+  // User methods
+  async getUser(userId: string): Promise<User> {
+    return fetchWithAuth<User>(`/users/${userId}`, {
+      method: 'GET',
+    });
+  },
+
+  async getUserByEmail(email: string): Promise<User> {
+    return fetchWithAuth<User>(`/users/by-email/${encodeURIComponent(email)}`, {
+      method: 'GET',
+    });
+  },
+
+  // Language methods
+  async getLanguage(languageId: string): Promise<Language> {
+    return fetchWithAuth<Language>(`/languages/${languageId}`, {
+      method: 'GET',
+    });
+  },
+
+  async getLanguages(): Promise<Language[]> {
+    return fetchWithAuth<Language[]>('/languages', {
+      method: 'GET',
     });
   },
 };

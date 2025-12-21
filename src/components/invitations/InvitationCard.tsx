@@ -29,7 +29,6 @@ export default function InvitationCard({ invitation, onAccept, onReject }: Invit
       </div>
 
       <div className="invitation-info">
-        <p><strong>ID проекта:</strong> {invitation.projectId}</p>
         <p><strong>Роль:</strong>
           <span className={`role-badge role-${invitation.role}`}>
             {invitation.role === 'admin' ? 'Администратор' : 'Ревьюер'}
@@ -52,4 +51,5 @@ export default function InvitationCard({ invitation, onAccept, onReject }: Invit
     </div>
   );
 }
+
 

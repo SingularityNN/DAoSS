@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { SendInvitationDto } from '../../services/api';
+import { api } from '../../services/api';
 import './InvitationForm.css';
 
 interface InvitationFormProps {
@@ -8,7 +9,7 @@ interface InvitationFormProps {
 }
 
 export default function InvitationForm({ onSubmit, onCancel }: InvitationFormProps) {
-  const [invitedUserId, setInvitedUserId] = useState('');
+  const [invitedUserEmail, setInvitedUserEmail] = useState('');
   const [role, setRole] = useState<'admin' | 'reviewer'>('reviewer');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,11 +20,14 @@ export default function InvitationForm({ onSubmit, onCancel }: InvitationFormPro
     setLoading(true);
 
     try {
-      await onSubmit({ invitedUserId, role });
-      setInvitedUserId('');
+      // Ищем пользователя по email
+      const user = await api.getUserByEmail(invitedUserEmail);
+      const dto: SendInvitationDto = { invitedUserId: user.id, role };
+      await onSubmit(dto);
+      setInvitedUserEmail('');
       setRole('reviewer');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось отправить приглашение');
+      setError(err instanceof Error ? err.message : 'Не удалось отправить приглашение. Проверьте правильность email.');
     } finally {
       setLoading(false);
     }
@@ -35,14 +39,14 @@ export default function InvitationForm({ onSubmit, onCancel }: InvitationFormPro
         {error && <div className="error-message">{error}</div>}
 
         <div className="form-group">
-          <label htmlFor="invitedUserId">ID приглашаемого пользователя *</label>
+          <label htmlFor="invitedUserEmail">Email приглашаемого пользователя *</label>
           <input
-            type="text"
-            id="invitedUserId"
-            value={invitedUserId}
-            onChange={(e) => setInvitedUserId(e.target.value)}
+            type="email"
+            id="invitedUserEmail"
+            value={invitedUserEmail}
+            onChange={(e) => setInvitedUserEmail(e.target.value)}
             required
-            placeholder="Введите GUID пользователя"
+            placeholder="Введите email пользователя"
             disabled={loading}
           />
         </div>
@@ -72,4 +76,5 @@ export default function InvitationForm({ onSubmit, onCancel }: InvitationFormPro
     </div>
   );
 }
+
 
