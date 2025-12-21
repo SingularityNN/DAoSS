@@ -1,10 +1,25 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import '../../styles.css';
 import './FlowchartEditor.css';
 
 function FlowchartEditor() {
   const editorRef = useRef<HTMLDivElement>(null);
   const scriptLoadedRef = useRef(false);
+  const [isDark, setIsDark] = useState(() => {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return savedTheme === 'dark' || (!savedTheme && prefersDark);
+  });
+  
+  // Инициализация темы при монтировании
+  useEffect(() => {
+    const html = document.documentElement;
+    if (isDark) {
+      html.classList.add('dark');
+    } else {
+      html.classList.remove('dark');
+    }
+  }, [isDark]);
 
   useEffect(() => {
     // Загружаем и инициализируем app.js только один раз
@@ -127,8 +142,40 @@ function FlowchartEditor() {
       <main className="main-content">
         <header className="top-bar">
           <h1>Редактор блок-схем</h1>
-          <div className="zoom-indicator">
-            Масштаб: <span id="zoom-value">100</span>%
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button 
+              id="theme-toggle" 
+              className="control-btn"
+              title="Переключить тему"
+              onClick={() => {
+                const newIsDark = !isDark;
+                setIsDark(newIsDark);
+                const html = document.documentElement;
+                if (newIsDark) {
+                  html.classList.add('dark');
+                  localStorage.setItem('theme', 'dark');
+                } else {
+                  html.classList.remove('dark');
+                  localStorage.setItem('theme', 'light');
+                }
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="5"></circle>
+                <line x1="12" y1="1" x2="12" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="23"></line>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                <line x1="1" y1="12" x2="3" y2="12"></line>
+                <line x1="21" y1="12" x2="23" y2="12"></line>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+              </svg>
+              <span className="theme-toggle-text">{isDark ? 'Тёмная' : 'Светлая'}</span>
+            </button>
+            <div className="zoom-indicator">
+              Масштаб: <span id="zoom-value">100</span>%
+            </div>
           </div>
         </header>
         <div className="canvas-wrapper" id="canvas-wrapper">
@@ -230,6 +277,14 @@ function FlowchartEditor() {
               </svg>
               Загрузить пример
             </button>
+          </div>
+          <div className="form-group">
+            <label htmlFor="language-select">Язык программирования:</label>
+            <select id="language-select" className="form-control" style={{ width: '100%', padding: '8px', marginBottom: '10px' }}>
+              <option value="pascal">Pascal</option>
+              <option value="c">C</option>
+              <option value="cpp">C++</option>
+            </select>
           </div>
           <div className="form-group">
             <label htmlFor="code-editor">Исходный код:</label>

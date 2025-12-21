@@ -193,6 +193,8 @@ function drawConnections() {
         const fromNode = state.nodes.find(n => n.id === conn.from);
         const toNode = state.nodes.find(n => n.id === conn.to);
         
+        // Пропускаем соединения, где один из узлов скрыт (merge-пойнты используются только для маршрутизации соединений)
+        // Но мы все равно рисуем соединения через скрытые узлы, так как они нужны для правильной маршрутизации
         if (fromNode && toNode) {
             const fromPort = getPortPosition(fromNode, conn.fromPort || 'bottom');
             const toPort = getPortPosition(toNode, conn.toPort || 'top');
@@ -259,6 +261,42 @@ function drawConnections() {
             });
             
             svg.appendChild(path);
+            
+            // Добавляем метку на соединение, если она есть
+            if (conn.label) {
+                const labelX = (scaledFromX + scaledToX) / 2;
+                const labelY = (scaledFromY + scaledToY) / 2;
+                const fontSize = 12 * state.zoom;
+                
+                // Приблизительная ширина текста (примерно 0.6 * fontSize на символ)
+                const textWidth = conn.label.length * fontSize * 0.6;
+                const textHeight = fontSize * 1.2;
+                const padding = 4 * state.zoom;
+                
+                // Создаем фон для метки
+                const labelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                labelBg.setAttribute('x', (labelX - textWidth / 2 - padding).toString());
+                labelBg.setAttribute('y', (labelY - textHeight / 2 - padding / 2).toString());
+                labelBg.setAttribute('width', (textWidth + padding * 2).toString());
+                labelBg.setAttribute('height', (textHeight + padding).toString());
+                labelBg.setAttribute('fill', '#ffffff');
+                labelBg.setAttribute('stroke', '#64748b');
+                labelBg.setAttribute('stroke-width', (1 * state.zoom).toString());
+                labelBg.setAttribute('rx', (2 * state.zoom).toString());
+                
+                const labelText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                labelText.textContent = conn.label;
+                labelText.setAttribute('x', labelX.toString());
+                labelText.setAttribute('y', labelY.toString());
+                labelText.setAttribute('text-anchor', 'middle');
+                labelText.setAttribute('dominant-baseline', 'middle');
+                labelText.setAttribute('font-size', fontSize.toString());
+                labelText.setAttribute('fill', '#1e293b');
+                labelText.setAttribute('font-weight', 'bold');
+                
+                svg.appendChild(labelBg);
+                svg.appendChild(labelText);
+            }
         }
     });
     
@@ -309,6 +347,11 @@ function renderNodes() {
     canvas.innerHTML = '';
     
     state.nodes.forEach(node => {
+        // Пропускаем скрытые merge-пойнты (невидимые точки слияния)
+        if (node.hidden) {
+            return;
+        }
+        
         const nodeEl = document.createElement('div');
         nodeEl.className = `flowchart-node node-${node.type}`;
         if (state.selectedNodeId === node.id) {
@@ -743,6 +786,18 @@ function startDragging(nodeId, e) {
 }
 
 function handleMouseMove(e) {
+    if (state.isPanning) {
+        // Перетаскивание канваса за пустое место
+        const wrapper = document.getElementById('canvas-wrapper');
+        if (wrapper) {
+            const deltaX = e.clientX - state.panStart.x;
+            const deltaY = e.clientY - state.panStart.y;
+            wrapper.scrollLeft = state.panScroll.x - deltaX;
+            wrapper.scrollTop = state.panScroll.y - deltaY;
+        }
+        return;
+    }
+    
     if (state.draggedNode) {
         const node = state.nodes.find(n => n.id === state.draggedNode);
         if (node) {
@@ -773,6 +828,13 @@ function handleMouseUp() {
         if (nodeEl) nodeEl.classList.remove('dragging');
         state.draggedNode = null;
         renderInfoPanel();
+    }
+    if (state.isPanning) {
+        state.isPanning = false;
+        const canvasWrapper = document.getElementById('canvas-wrapper');
+        if (canvasWrapper) {
+            canvasWrapper.style.cursor = '';
+        }
     }
 }
 
@@ -935,6 +997,119 @@ function addComment() {
     showToast('Комментарий добавлен');
 }
 
+// API Helper Functions
+function getAuthToken() {
+    return localStorage.getItem('authToken');
+}
+
+async function callParserAPI(code, language) {
+    const token = getAuthToken();
+    if (!token) {
+        throw new Error('Требуется авторизация');
+    }
+
+    // Проверка размера кода перед отправкой
+    const codeSizeKB = (new Blob([code]).size / 1024).toFixed(2);
+    if (code.length > 50000) {
+        console.warn(`Большой файл: ${codeSizeKB} KB. Парсер может не справиться.`);
+    }
+
+    // Увеличиваем таймаут для больших файлов (60 секунд)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 секунд
+
+    try {
+        const response = await fetch('http://localhost:5143/api/parser/parse', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                Code: code,
+                Language: language
+            }),
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            if (response.status === 401) {
+                throw new Error('Требуется авторизация');
+            } else if (response.status === 503) {
+                // Пытаемся получить более детальную информацию об ошибке
+                let errorDetail = '';
+                try {
+                    const errorData = await response.json();
+                    if (errorData.error) {
+                        errorDetail = `: ${errorData.error}`;
+                    }
+                } catch (e) {
+                    // Игнорируем ошибку парсинга JSON
+                }
+                throw new Error(`Парсер-сервис недоступен${errorDetail}. Возможные причины:\n` +
+                    '1. Парсер упал при обработке кода (bad allocation)\n' +
+                    '2. Парсер не запущен на порту 8080\n' +
+                    '3. Код слишком сложный для парсера');
+            } else if (response.status === 504) {
+                throw new Error('Таймаут запроса к парсеру. Файл слишком большой или парсер перегружен');
+            }
+            
+            // Пытаемся получить детали ошибки
+            let errorText = '';
+            try {
+                const errorData = await response.json();
+                errorText = errorData.error || errorData.message || '';
+            } catch (e) {
+                errorText = await response.text();
+            }
+            
+            throw new Error(`Ошибка сервера: ${response.status}. ${errorText}`);
+        }
+
+        const result = await response.json();
+        
+        // Логируем результат для отладки
+        console.log('[DEBUG] Parser response:', {
+            success: result.success,
+            hasParserErrors: result.parserErrors && result.parserErrors.length > 0,
+            parserErrorsCount: result.parserErrors ? result.parserErrors.length : 0,
+            firstError: result.parserErrors && result.parserErrors.length > 0 ? result.parserErrors[0] : null
+        });
+        
+        // Проверяем, есть ли ошибки парсера (даже если success = true)
+        if (result.parserErrors && result.parserErrors.length > 0) {
+            const parserError = result.parserErrors[0];
+            const errorMessage = parserError.message || '';
+            console.log('[DEBUG] Parser error message:', errorMessage);
+            
+            // Проверяем различные варианты сообщений об ошибке памяти
+            if (errorMessage.toLowerCase().includes('bad allocation') || 
+                errorMessage.toLowerCase().includes('bad_alloc') ||
+                errorMessage.toLowerCase().includes('memory') ||
+                errorMessage.toLowerCase().includes('allocation')) {
+                throw new Error('Парсер не смог обработать код из-за нехватки памяти. ' +
+                    'Код слишком сложный или содержит слишком много вложенных конструкций.');
+            }
+        }
+        
+        return result;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error('Таймаут запроса. Файл слишком большой или парсер перегружен');
+        }
+        // Проверяем, не связана ли ошибка с падением парсера
+        if (error.message && (error.message.includes('bad allocation') || 
+                              error.message.includes('недоступен'))) {
+            throw new Error('Парсер упал при обработке кода. ' +
+                'Возможно, код слишком сложный. Попробуйте упростить код или разбить его на части.');
+        }
+        throw error;
+    }
+}
+
 // Code Generation
 function parseCodeToFlowchart(code) {
     const nodes = [];
@@ -972,7 +1147,7 @@ function parseCodeToFlowchart(code) {
                 comments: []
             });
             yPosition += 150;
-        } else if (trimmed.includes('print') || trimmed.includes('console.log') || trimmed.includes('cout')) {
+        } else if (trimmed.includes('print') || trimmed.includes('console.log') || trimmed.includes('cout')|| trimmed.includes('Writeln')|| trimmed.includes('Write')) {
             nodes.push({
                 id: `node-${index}`,
                 type: 'output',
@@ -1029,26 +1204,804 @@ function parseCodeToFlowchart(code) {
     return nodes;
 }
 
+// Parse JSON from parser to flowchart nodes and connections
+function parseJsonToFlowchart(jsonData, language) {
+    const nodes = [];
+    const connections = [];
+    let nodeIdCounter = 0;
+    let yPosition = 50;
+    const nodeMap = new Map(); // Для отслеживания созданных нод и их связей
+    
+    function createNode(type, text, codeRef = '', width = null, height = null) {
+        const nodeId = nodeIdCounter++;
+        const node = {
+            id: `node-${nodeId}`,
+            type: type,
+            x: 400,
+            y: yPosition,
+            width: width || (type === 'decision' ? 180 : type === 'start' || type === 'end' ? 120 : 180),
+            height: height || (type === 'decision' ? 100 : type === 'start' || type === 'end' ? 60 : 80),
+            text: text,
+            codeReference: codeRef,
+            comments: []
+        };
+        nodes.push(node);
+        yPosition += (type === 'decision' ? 150 : type === 'start' || type === 'end' ? 120 : 130);
+        console.log(`[DEBUG] Created node: node-${nodeId}, type: ${type}, text: ${text.substring(0, 50)}`);
+        return node;
+    }
+    
+    function createConnection(fromNode, toNode, fromPort = 'bottom', toPort = 'top', label = '') {
+        connections.push({
+            id: `conn-${Date.now()}-${connections.length}`,
+            from: fromNode.id,
+            to: toNode.id,
+            fromPort: fromPort,
+            toPort: toPort,
+            label: label
+        });
+    }
+    
+    function processBlock(block, parentNode = null) {
+        if (!block || typeof block !== 'object') return {nodes: [], exitNodes: parentNode ? [parentNode] : []};
+        
+        const blockNodes = [];
+        // Храним список exitNode'ов предыдущего элемента (может быть несколько для if/else/caseOf)
+        let previousExitNodes = parentNode ? [parentNode] : [];
+        
+        // Получаем все выражения в правильном порядке
+        const expressions = Object.entries(block)
+            .filter(([key]) => key.startsWith('expr'))
+            .sort(([key1], [key2]) => {
+                const num1 = parseInt(key1.replace('expr', '')) || 0;
+                const num2 = parseInt(key2.replace('expr', '')) || 0;
+                return num1 - num2;
+            });
+        
+        // Обрабатываем все выражения в блоке
+        for (let i = 0; i < expressions.length; i++) {
+            const [key, expr] = expressions[i];
+            if (!expr || typeof expr !== 'object') continue;
+            
+            let currentNode = null;
+            let exitNodes = []; // Список нод, после которых продолжается выполнение (может быть несколько)
+            
+            // Сначала создаем ноду и соединяем её с предыдущими элементами
+            // Обработка разных типов выражений
+            if (expr.type === 'io') {
+                // Ввод/вывод
+                const ioText = expr.value || '';
+                const isOutput = ioText && (
+                    ioText.includes('Writeln') || 
+                    ioText.includes('Write') ||
+                    ioText.includes('cout') ||
+                    ioText.includes('printf')
+                );
+                const isInput = ioText && (
+                    ioText.includes('Readln') || 
+                    ioText.includes('Read') ||
+                    ioText.includes('scanf') ||
+                    ioText.includes('cin')
+                );
+                const nodeType = isOutput ? 'output' : (isInput ? 'input' : 'process');
+                const displayText = ioText.length > 30 ? ioText.substring(0, 30) + '...' : ioText;
+                currentNode = createNode(nodeType, displayText, ioText);
+                
+                // Соединяем с предыдущими элементами
+                previousExitNodes.forEach(prevExit => {
+                    const prevNode = prevExit.node || prevExit;
+                    if (prevNode && prevNode !== currentNode && prevNode !== parentNode) {
+                        const fromPort = prevExit.port || 'bottom';
+                        const label = prevExit.label || '';
+                        createConnection(prevNode, currentNode, fromPort, 'top', label);
+                    }
+                });
+                
+                exitNodes = [currentNode];
+            } else if (expr.type === 'assign') {
+                // Присваивание
+                const text = expr.value || 'Присваивание';
+                currentNode = createNode('process', text.length > 30 ? text.substring(0, 30) + '...' : text, expr.value || '');
+                
+                // Соединяем с предыдущими элементами
+                previousExitNodes.forEach(prevExit => {
+                    const prevNode = prevExit.node || prevExit;
+                    if (prevNode && prevNode !== currentNode && prevNode !== parentNode) {
+                        const fromPort = prevExit.port || 'bottom';
+                        const label = prevExit.label || '';
+                        createConnection(prevNode, currentNode, fromPort, 'top', label);
+                    }
+                });
+                
+                exitNodes = [currentNode];
+            } else if (expr.type === 'if' || expr.type === 'If') {
+                // Условие if
+                const conditionText = expr.condition || 'Условие';
+                currentNode = createNode('decision', conditionText.length > 30 ? conditionText.substring(0, 30) + '...' : conditionText, expr.condition || '');
+                
+                // Соединяем условие с предыдущими элементами
+                previousExitNodes.forEach(prevExit => {
+                    const prevNode = prevExit.node || prevExit;
+                    if (prevNode && prevNode !== currentNode && prevNode !== parentNode) {
+                        const fromPort = prevExit.port || 'bottom';
+                        const label = prevExit.label || '';
+                        createConnection(prevNode, currentNode, fromPort, 'top', label);
+                    }
+                });
+                
+                let trueExitNode = null; // Выход из ветки true
+                
+                // Обрабатываем тело if (ветка true)
+                if (expr.body && typeof expr.body === 'object') {
+                    const bodyResult = processBlock(expr.body, currentNode);
+                    const bodyNodes = bodyResult.nodes || [];
+                    const bodyExitNodes = bodyResult.exitNodes || [];
+                    if (bodyNodes.length > 0) {
+                        // Соединяем условие с первой нодой тела (ветка "true" - слева)
+                        createConnection(currentNode, bodyNodes[0], 'left', 'top', 'true');
+                        // Используем exitNodes из processBlock, если они есть, иначе последнюю ноду
+                        if (bodyExitNodes.length > 0) {
+                            // Нормализуем exitNodes: если это просто ноды, оставляем как есть
+                            const normalizedExits = bodyExitNodes.map(exit => exit.node || exit);
+                            // Если только один exit, оставляем как одно значение, иначе массив
+                            trueExitNode = normalizedExits.length === 1 ? normalizedExits[0] : normalizedExits;
+                        } else {
+                            trueExitNode = bodyNodes[bodyNodes.length - 1];
+                        }
+                    } else {
+                        trueExitNode = currentNode;
+                    }
+                } else {
+                    trueExitNode = currentNode;
+                }
+                
+                // Проверяем, есть ли следующий элемент - else
+                let nextExpr = i + 1 < expressions.length ? expressions[i + 1][1] : null;
+                if (nextExpr && (nextExpr.type === 'else' || nextExpr.type === 'Else')) {
+                    // Обрабатываем else
+                    i++; // Пропускаем else, он обработается здесь
+                    
+                    // Обрабатываем тело else
+                    let falseExitNode = null;
+                    if (nextExpr.body && typeof nextExpr.body === 'object') {
+                        const elseResult = processBlock(nextExpr.body, currentNode);
+                        const elseBodyNodes = elseResult.nodes || [];
+                        const elseExitNodes = elseResult.exitNodes || [];
+                        if (elseBodyNodes.length > 0) {
+                            // Соединяем условие с первой нодой else (ветка "false" - справа)
+                            createConnection(currentNode, elseBodyNodes[0], 'right', 'top', 'false');
+                            // Используем exitNodes из processBlock, если они есть, иначе последнюю ноду
+                            if (elseExitNodes.length > 0) {
+                                const normalizedExits = elseExitNodes.map(exit => exit.node || exit);
+                                falseExitNode = normalizedExits.length === 1 ? normalizedExits[0] : normalizedExits;
+                            } else {
+                                falseExitNode = elseBodyNodes[elseBodyNodes.length - 1];
+                            }
+                        } else {
+                            falseExitNode = currentNode;
+                        }
+                    } else {
+                        falseExitNode = currentNode;
+                    }
+                    
+                    // Для if/else выходы - это оба exitNode'а веток
+                    // Следующий элемент соединится с обоими
+                    exitNodes = [];
+                    // Нормализуем trueExitNode - может быть массив или один элемент
+                    const trueExits = Array.isArray(trueExitNode) ? trueExitNode : [trueExitNode];
+                    trueExits.forEach(exit => {
+                        if (exit && exit !== currentNode) exitNodes.push(exit);
+                    });
+                    // Нормализуем falseExitNode - может быть массив или один элемент
+                    const falseExits = Array.isArray(falseExitNode) ? falseExitNode : [falseExitNode];
+                    falseExits.forEach(exit => {
+                        if (exit && exit !== currentNode) exitNodes.push(exit);
+                    });
+                    // Если обе ветки пустые, следующий элемент соединяется с условием
+                    if (exitNodes.length === 0) exitNodes = [currentNode];
+                } else {
+                    // Нет else - выходы: ветка true и ветка false (само условие через правый порт)
+                    // Следующий элемент соединится и с trueExitNode, и с условием через правый порт
+                    exitNodes = [];
+                    // Нормализуем trueExitNode - может быть массив или один элемент
+                    const trueExits = Array.isArray(trueExitNode) ? trueExitNode : [trueExitNode];
+                    trueExits.forEach(exit => {
+                        if (exit && exit !== currentNode) exitNodes.push(exit);
+                    });
+                    // Для ветки false сохраняем информацию о соединении через правый порт
+                    exitNodes.push({node: currentNode, port: 'right', label: 'false'});
+                }
+            } else if (expr.type === 'else' || expr.type === 'Else') {
+                // Else уже обработан вместе с if выше, пропускаем
+                continue;
+            } else if (expr.type === 'while' || expr.type === 'While') {
+                // Цикл while
+                const conditionText = expr.condition || 'Условие цикла';
+                currentNode = createNode('decision', conditionText.length > 30 ? conditionText.substring(0, 30) + '...' : conditionText, expr.condition || '');
+                
+                // Соединяем условие с предыдущими элементами
+                previousExitNodes.forEach(prevExit => {
+                    const prevNode = prevExit.node || prevExit;
+                    if (prevNode && prevNode !== currentNode && prevNode !== parentNode) {
+                        const fromPort = prevExit.port || 'bottom';
+                        const label = prevExit.label || '';
+                        createConnection(prevNode, currentNode, fromPort, 'top', label);
+                    }
+                });
+                
+                // Обрабатываем тело цикла
+                if (expr.body && typeof expr.body === 'object') {
+                    const bodyResult = processBlock(expr.body, currentNode);
+                    const bodyNodes = bodyResult.nodes || [];
+                    const bodyExitNodes = bodyResult.exitNodes || [];
+                    if (bodyNodes.length > 0) {
+                        // Соединяем условие с первой нодой тела (ветка "true" - слева)
+                        createConnection(currentNode, bodyNodes[0], 'left', 'top', 'true');
+                        // Соединяем последнюю ноду/ноды тела обратно к условию (продолжение цикла - снизу)
+                        const lastNodes = bodyExitNodes.length > 0 
+                            ? bodyExitNodes.map(exit => exit.node || exit)
+                            : [bodyNodes[bodyNodes.length - 1]];
+                        lastNodes.forEach(lastNode => {
+                            if (lastNode && lastNode !== currentNode) {
+                                createConnection(lastNode, currentNode, 'bottom', 'top');
+                            }
+                        });
+                    }
+                }
+                // Выход из цикла - это условие через правый порт (ветка "false")
+                exitNodes = [{node: currentNode, port: 'right', label: 'false'}];
+            } else if (expr.type === 'for' || expr.type === 'For') {
+                // Цикл for
+                const conditionText = expr.condition || 'Цикл for';
+                currentNode = createNode('decision', conditionText.length > 30 ? conditionText.substring(0, 30) + '...' : conditionText, expr.condition || '');
+                
+                // Соединяем условие с предыдущими элементами
+                previousExitNodes.forEach(prevExit => {
+                    const prevNode = prevExit.node || prevExit;
+                    if (prevNode && prevNode !== currentNode && prevNode !== parentNode) {
+                        const fromPort = prevExit.port || 'bottom';
+                        const label = prevExit.label || '';
+                        createConnection(prevNode, currentNode, fromPort, 'top', label);
+                    }
+                });
+                
+                // Обрабатываем тело цикла
+                if (expr.body && typeof expr.body === 'object') {
+                    const bodyResult = processBlock(expr.body, currentNode);
+                    const bodyNodes = bodyResult.nodes || [];
+                    const bodyExitNodes = bodyResult.exitNodes || [];
+                    if (bodyNodes.length > 0) {
+                        // Соединяем условие с первой нодой тела (ветка "true" - слева)
+                        createConnection(currentNode, bodyNodes[0], 'left', 'top', 'true');
+                        // Соединяем последнюю ноду/ноды тела обратно к условию (продолжение цикла - снизу)
+                        const lastNodes = bodyExitNodes.length > 0 
+                            ? bodyExitNodes.map(exit => exit.node || exit)
+                            : [bodyNodes[bodyNodes.length - 1]];
+                        lastNodes.forEach(lastNode => {
+                            if (lastNode && lastNode !== currentNode) {
+                                createConnection(lastNode, currentNode, 'bottom', 'top');
+                            }
+                        });
+                    }
+                }
+                // Выход из цикла - это условие через правый порт (ветка "false")
+                exitNodes = [{node: currentNode, port: 'right', label: 'false'}];
+            } else if (expr.type === 'until') {
+                // Цикл repeat-until (особый случай - тело сначала, потом условие)
+                const conditionText = expr.condition || 'Условие until';
+                
+                // Сначала обрабатываем тело цикла
+                let firstBodyNode = null;
+                let lastBodyNodes = [];
+                if (expr.body && typeof expr.body === 'object') {
+                    const bodyResult = processBlock(expr.body, previousExitNodes[0] ? (previousExitNodes[0].node || previousExitNodes[0]) : parentNode);
+                    const bodyNodes = bodyResult.nodes || [];
+                    const bodyExitNodes = bodyResult.exitNodes || [];
+                    if (bodyNodes.length > 0) {
+                        firstBodyNode = bodyNodes[0];
+                        // Используем exitNodes из processBlock, если они есть, иначе последнюю ноду
+                        if (bodyExitNodes.length > 0) {
+                            lastBodyNodes = bodyExitNodes.map(exit => exit.node || exit);
+                        } else {
+                            lastBodyNodes = [bodyNodes[bodyNodes.length - 1]];
+                        }
+                        // Добавляем ноды тела в blockNodes
+                        blockNodes.push(...bodyNodes);
+                        // Соединяем с предыдущими элементами
+                        previousExitNodes.forEach(prevExit => {
+                            const prevNode = prevExit.node || prevExit;
+                            if (prevNode && prevNode !== firstBodyNode && prevNode !== parentNode) {
+                                const fromPort = prevExit.port || 'bottom';
+                                const label = prevExit.label || '';
+                                createConnection(prevNode, firstBodyNode, fromPort, 'top', label);
+                            }
+                        });
+                    }
+                }
+                
+                // Создаем ноду условия (после тела)
+                currentNode = createNode('decision', conditionText.length > 30 ? conditionText.substring(0, 30) + '...' : conditionText, expr.condition || '');
+                blockNodes.push(currentNode);
+                
+                // Соединяем последние элементы тела к условию (безымянная ветка)
+                if (lastBodyNodes.length > 0) {
+                    lastBodyNodes.forEach(lastNode => {
+                        if (lastNode && lastNode !== currentNode) {
+                            createConnection(lastNode, currentNode);
+                        }
+                    });
+                } else if (previousExitNodes.length > 0) {
+                    const prevNode = previousExitNodes[0].node || previousExitNodes[0];
+                    if (prevNode && prevNode !== parentNode) {
+                        createConnection(prevNode, currentNode);
+                    }
+                }
+                
+                // В repeat-until: 
+                // - Из условия until должна идти ветка true в первый элемент тела (цикл продолжается)
+                // - Ветка false из первого элемента тела идет в элемент за рамками цикла (выход из цикла)
+                // - Безымянная ветка от последнего элемента тела к условию уже есть выше
+                if (firstBodyNode) {
+                    // Условие until -> первый элемент тела (ветка true - цикл продолжается)
+                    createConnection(currentNode, firstBodyNode, 'left', 'top', 'true');
+                    // Выход из цикла - первый элемент тела через правый порт (ветка false)
+                    exitNodes = [{node: firstBodyNode, port: 'right', label: 'false'}];
+                } else {
+                    // Если тело пустое, выход через условие
+                    exitNodes = [{node: currentNode, port: 'left', label: 'true'}];
+                }
+            } else if (expr.type === 'caseOf') {
+                // Case of
+                const caseText = `Case: ${expr.compareValue || ''}`;
+                currentNode = createNode('decision', caseText.length > 30 ? caseText.substring(0, 30) + '...' : caseText, expr.compareValue || '');
+                
+                // Соединяем условие с предыдущими элементами
+                previousExitNodes.forEach(prevExit => {
+                    const prevNode = prevExit.node || prevExit;
+                    if (prevNode && prevNode !== currentNode && prevNode !== parentNode) {
+                        const fromPort = prevExit.port || 'bottom';
+                        const label = prevExit.label || '';
+                        createConnection(prevNode, currentNode, fromPort, 'top', label);
+                    }
+                });
+                
+                // Собираем все выходы веток
+                const branchExits = [];
+                
+                // Обрабатываем ветки
+                if (expr.body && typeof expr.body === 'object') {
+                    const branchKeys = Object.keys(expr.body).sort();
+                    branchKeys.forEach((branchKey, index) => {
+                        const branch = expr.body[branchKey];
+                        if (branch.todo && typeof branch.todo === 'object') {
+                            const branchResult = processBlock(branch.todo, currentNode);
+                            const branchNodes = branchResult.nodes || [];
+                            const branchExitNodes = branchResult.exitNodes || [];
+                            if (branchNodes.length > 0) {
+                                // Все именные ветки из caseOf должны выходить из нижней точки
+                                const port = 'bottom';
+                                // Получаем метку для ветки из conditionValues
+                                const branchLabel = branch.conditionValues || branchKey;
+                                // Соединяем условие с первой нодой ветки с меткой
+                                createConnection(currentNode, branchNodes[0], port, 'top', branchLabel);
+                                // Используем exitNodes из processBlock, если они есть
+                                if (branchExitNodes.length > 0) {
+                                    branchExitNodes.forEach(exit => {
+                                        branchExits.push(exit.node || exit);
+                                    });
+                                } else {
+                                    branchExits.push(branchNodes[branchNodes.length - 1]);
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                // Выходы - это все exitNode'ы веток
+                // Следующий элемент соединится со всеми ветками
+                exitNodes = branchExits.length > 0 ? branchExits : [currentNode];
+            } else if (expr.value) {
+                // Простое выражение
+                const text = expr.value;
+                currentNode = createNode('process', text.length > 30 ? text.substring(0, 30) + '...' : text, expr.value);
+                
+                // Соединяем с предыдущими элементами
+                previousExitNodes.forEach(prevExit => {
+                    // prevExit может быть объектом {node, port, label} или просто нодой
+                    const prevNode = prevExit.node || prevExit;
+                    if (prevNode && prevNode !== currentNode && prevNode !== parentNode) {
+                        const fromPort = prevExit.port || 'bottom';
+                        const label = prevExit.label || '';
+                        createConnection(prevNode, currentNode, fromPort, 'top', label);
+                    } else if (typeof prevExit === 'object' && prevExit.node) {
+                        // Это объект с информацией о порте, но нода совпадает - пропускаем
+                    }
+                });
+                
+                exitNodes = [currentNode];
+            }
+            
+            if (currentNode) {
+                blockNodes.push(currentNode);
+                
+                // Обновляем previousExitNodes для следующей итерации
+                // Нормализуем exitNodes: преобразуем в массив объектов {node, port?, label?}
+                previousExitNodes = exitNodes.map(exit => {
+                    if (typeof exit === 'object' && exit.node) {
+                        return exit; // Уже правильный формат
+                    }
+                    return exit; // Просто нода
+                });
+            }
+        }
+        
+        return {
+            nodes: blockNodes.length > 0 ? blockNodes : (previousExitNodes.length > 0 && previousExitNodes[0] && previousExitNodes[0] !== parentNode ? [previousExitNodes[0].node || previousExitNodes[0]] : []),
+            exitNodes: previousExitNodes
+        };
+    }
+    
+    // Обработка структуры в зависимости от языка
+    let lastMainNode = null;
+    
+    if (language === 'pascal' && jsonData.program) {
+        // Pascal формат: {"program": {"name": "...", "sections": {...}}}
+        const program = jsonData.program;
+        const startNode = createNode('start', 'Начало', '');
+        lastMainNode = startNode;
+        
+        const sections = program.sections || {};
+        
+        // Обрабатываем functionBlock - функции и процедуры
+        if (sections.functionBlock && typeof sections.functionBlock === 'object') {
+            console.log('[DEBUG] Processing functionBlock, nodeIdCounter before:', nodeIdCounter);
+            const functionExprs = Object.entries(sections.functionBlock)
+                .filter(([key]) => key.startsWith('expr'))
+                .sort(([key1], [key2]) => {
+                    const num1 = parseInt(key1.replace('expr', '')) || 0;
+                    const num2 = parseInt(key2.replace('expr', '')) || 0;
+                    return num1 - num2;
+                });
+            
+            console.log('[DEBUG] functionBlock expressions count:', functionExprs.length);
+            for (const [key, funcExpr] of functionExprs) {
+                if (!funcExpr || typeof funcExpr !== 'object') continue;
+                
+                // Создаем ноду для функции/процедуры с объявлением
+                const declText = funcExpr.declaration || 'Без объявления';
+                console.log('[DEBUG] Creating function node for:', key, ', nodeIdCounter before:', nodeIdCounter);
+                const funcNode = createNode('process', declText.length > 50 ? declText.substring(0, 50) + '...' : declText, declText);
+                console.log('[DEBUG] Created function node:', funcNode.id, ', nodeIdCounter after:', nodeIdCounter);
+                
+                // Если есть тело функции, обрабатываем его (опционально, можно скрыть)
+                if (funcExpr.body && typeof funcExpr.body === 'object') {
+                    // Тело функции можно обработать рекурсивно, но для простоты пока пропускаем
+                    console.log('[DEBUG] Function has body but skipping it');
+                }
+                
+                // Соединяем с предыдущей нодой
+                if (lastMainNode && lastMainNode !== startNode) {
+                    createConnection(lastMainNode, funcNode);
+                } else {
+                    createConnection(startNode, funcNode);
+                }
+                lastMainNode = funcNode;
+            }
+            console.log('[DEBUG] Finished functionBlock, nodeIdCounter:', nodeIdCounter);
+        }
+        
+        // Обрабатываем constantBlock - константы как assign ноды
+        if (sections.constantBlock && typeof sections.constantBlock === 'object') {
+            console.log('[DEBUG] Processing constantBlock, nodeIdCounter before:', nodeIdCounter);
+            const constantExprs = Object.entries(sections.constantBlock)
+                .filter(([key]) => key.startsWith('expr'))
+                .sort(([key1], [key2]) => {
+                    const num1 = parseInt(key1.replace('expr', '')) || 0;
+                    const num2 = parseInt(key2.replace('expr', '')) || 0;
+                    return num1 - num2;
+                });
+            
+            console.log('[DEBUG] constantBlock expressions count:', constantExprs.length);
+            for (const [key, constExpr] of constantExprs) {
+                let constText = 'Константа';
+                
+                // Поддержка как старого формата (строка), так и нового (объект)
+                if (typeof constExpr === 'string') {
+                    constText = constExpr;
+                } else if (constExpr && typeof constExpr === 'object') {
+                    // Если это объект с type="assign", это не константа, пропускаем
+                    if (constExpr.type === 'assign') {
+                        console.log('[DEBUG] Skipping assignment in constantBlock:', key, constExpr.value);
+                        continue;
+                    }
+                    constText = constExpr.value || 'Константа';
+                }
+                
+                // Фильтруем только настоящие константы
+                // Константы в Pascal имеют формат: "name : type = value" (используют "=" после типа)
+                // Присваивания имеют формат: "name := value" (используют ":=" без типа между)
+                
+                // Проверяем: если между ":" и "=" только пробелы или ничего - это присваивание ":="
+                // Если между ":" и "=" есть тип (real, integer, string и т.д.) - это константа ": type ="
+                const colonIndex = constText.indexOf(':');
+                const equalsIndex = constText.indexOf('=');
+                
+                if (colonIndex >= 0 && equalsIndex > colonIndex) {
+                    // Берем текст между ":" и "="
+                    const between = constText.substring(colonIndex + 1, equalsIndex).trim();
+                    // Если между ":" и "=" только пробелы или пусто - это присваивание ":="
+                    if (!between || between.length === 0) {
+                        console.log('[DEBUG] Skipping assignment (:= found) in constantBlock:', key, constText);
+                        continue;
+                    }
+                    // Если есть текст между ":" и "=", это константа (тип данных)
+                } else if (colonIndex >= 0) {
+                    // Есть ":" но нет "=" - это не константа
+                    console.log('[DEBUG] Skipping (has : but no =) in constantBlock:', key, constText);
+                    continue;
+                }
+                
+                // Проверяем, что это действительно константа (есть "=" и ":")
+                // Константа должна иметь формат "name : type = value"
+                if (!constText.includes('=') || !constText.includes(':')) {
+                    console.log('[DEBUG] Skipping non-constant in constantBlock:', key, constText);
+                    continue;
+                }
+                
+                // Константы должны быть как assign с полным содержимым
+                console.log('[DEBUG] Creating constant node for:', key, ', nodeIdCounter before:', nodeIdCounter);
+                const constNode = createNode('process', constText.length > 30 ? constText.substring(0, 30) + '...' : constText, constText);
+                console.log('[DEBUG] Created constant node:', constNode.id, ', nodeIdCounter after:', nodeIdCounter);
+                
+                // Соединяем с предыдущей нодой
+                if (lastMainNode) {
+                    createConnection(lastMainNode, constNode);
+                } else {
+                    createConnection(startNode, constNode);
+                }
+                lastMainNode = constNode;
+            }
+            console.log('[DEBUG] Finished constantBlock, nodeIdCounter:', nodeIdCounter);
+        }
+        
+        // Обрабатываем variableBlock - переменные как assign ноды
+        if (sections.variableBlock && typeof sections.variableBlock === 'object') {
+            const variableExprs = Object.entries(sections.variableBlock)
+                .filter(([key]) => key.startsWith('expr'))
+                .sort(([key1], [key2]) => {
+                    const num1 = parseInt(key1.replace('expr', '')) || 0;
+                    const num2 = parseInt(key2.replace('expr', '')) || 0;
+                    return num1 - num2;
+                });
+            
+            console.log('[DEBUG] Processing variableBlock:', variableExprs.length, 'variables');
+            
+            for (const [key, varExpr] of variableExprs) {
+                let varText = 'Переменная';
+                
+                // Поддержка как старого формата (строка), так и нового (объект)
+                if (typeof varExpr === 'string') {
+                    varText = varExpr;
+                } else if (varExpr && typeof varExpr === 'object') {
+                    varText = varExpr.value || 'Переменная';
+                }
+                
+                console.log('[DEBUG] Creating var node:', key, varText.substring(0, 50));
+                
+                // Переменные должны быть как assign с полным содержимым
+                const varNode = createNode('process', varText.length > 30 ? varText.substring(0, 30) + '...' : varText, varText);
+                
+                // Соединяем с предыдущей нодой
+                if (lastMainNode && lastMainNode !== startNode) {
+                    createConnection(lastMainNode, varNode);
+                    console.log('[DEBUG] Connected var node to previous:', lastMainNode.id, '->', varNode.id);
+                } else {
+                    createConnection(startNode, varNode);
+                    console.log('[DEBUG] Connected var node to start:', startNode.id, '->', varNode.id);
+                }
+                lastMainNode = varNode;
+            }
+            console.log('[DEBUG] Finished variableBlock, lastMainNode:', lastMainNode ? lastMainNode.id : 'null');
+        } else {
+            console.log('[DEBUG] No variableBlock found or not an object');
+        }
+        
+        // Обрабатываем mainBlock - основной блок программы
+        if (sections.mainBlock && typeof sections.mainBlock === 'object') {
+            console.log('[DEBUG] Processing mainBlock, lastMainNode before:', lastMainNode ? lastMainNode.id : 'null');
+            const mainResult = processBlock(sections.mainBlock, lastMainNode || startNode);
+            const mainNodes = mainResult.nodes || [];
+            console.log('[DEBUG] mainBlock processed, got', mainNodes.length, 'nodes');
+            if (mainNodes.length > 0) {
+                // Соединяем последнюю ноду из предыдущих блоков с первой нодой mainBlock
+                if (lastMainNode && lastMainNode !== startNode) {
+                    createConnection(lastMainNode, mainNodes[0]);
+                    console.log('[DEBUG] Connected mainBlock to previous:', lastMainNode.id, '->', mainNodes[0].id);
+                } else {
+                    createConnection(startNode, mainNodes[0]);
+                    console.log('[DEBUG] Connected mainBlock to start:', startNode.id, '->', mainNodes[0].id);
+                }
+                // Находим последнюю ноду в mainBlock
+                lastMainNode = mainNodes[mainNodes.length - 1];
+                console.log('[DEBUG] mainBlock last node:', lastMainNode.id);
+            }
+        } else {
+            console.log('[DEBUG] No mainBlock found or not an object');
+        }
+    } else if ((language === 'c' || language === 'cpp') && jsonData.type === 'Program') {
+        // C/C++ формат: {"type": "Program", "name": "...", "body": {"type": "Block", "statements": [...]}}
+        const startNode = createNode('start', 'Начало', '');
+        lastMainNode = startNode;
+        
+        if (jsonData.body && typeof jsonData.body === 'object' && jsonData.body.type === 'Block') {
+            const bodyResult = processASTBlock(jsonData.body, startNode);
+            const bodyNodes = bodyResult.nodes || [];
+            if (bodyNodes.length > 0) {
+                createConnection(startNode, bodyNodes[0]);
+                lastMainNode = bodyNodes[bodyNodes.length - 1];
+            }
+        }
+    } else {
+        // Если структура не распознана, создаем простую блок-схему
+        const startNode = createNode('start', 'Начало', '');
+        lastMainNode = startNode;
+    }
+    
+    // Создаем конечную ноду и соединяем с последней нодой программы
+    const endNode = createNode('end', 'Конец', '');
+    if (lastMainNode && lastMainNode.id !== endNode.id) {
+        createConnection(lastMainNode, endNode);
+    }
+    
+    return { nodes, connections };
+}
+
 function generateFlowchart() {
     const codeEditor = document.getElementById('code-editor');
-    if (!codeEditor) return;
+    const languageSelect = document.getElementById('language-select');
+    
+    if (!codeEditor || !languageSelect) return;
     
     const code = codeEditor.value;
+    const language = languageSelect.value;
+    
     if (!code.trim()) {
         showToast('Введите код для генерации', 'error');
         return;
     }
     
-    state.sourceCode = code;
-    state.nodes = parseCodeToFlowchart(code);
-    state.connections = [];
-    state.selectedNodeId = null;
+    // Показываем индикатор загрузки
+    const generateBtn = document.getElementById('generate-btn');
+    const originalText = generateBtn ? generateBtn.innerHTML : '';
+    if (generateBtn) {
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = 'Генерация...';
+    }
     
-    addToHistory('Загружен исходный код и сгенерирована схема');
-    renderNodes();
-    renderInfoPanel();
-    renderComments();
-    showToast('Блок-схема сгенерирована из кода');
+    state.sourceCode = code;
+    
+    // Вызываем API парсера
+    callParserAPI(code, language)
+        .then(response => {
+            // Проверяем наличие ошибок парсера
+            if (response.lexerErrors && response.lexerErrors.length > 0) {
+                const errorMsg = `Ошибки лексера: ${response.lexerErrors.map(e => e.message || e.value).join(', ')}`;
+                console.warn('Ошибки лексера:', response.lexerErrors);
+                showToast(errorMsg, 'error');
+            }
+            
+            if (response.parserErrors && response.parserErrors.length > 0) {
+                const errorMsg = `Ошибки парсера: ${response.parserErrors.map(e => e.message || e.value).join(', ')}`;
+                console.warn('Ошибки парсера:', response.parserErrors);
+                showToast(errorMsg, 'error');
+            }
+            
+            if (!response.success) {
+                throw new Error(response.error || 'Ошибка парсинга');
+            }
+            
+            if (!response.representation) {
+                throw new Error('Парсер не вернул представление кода');
+            }
+            
+            // Преобразуем JSON в блок-схему
+            // Убеждаемся, что representation - это объект JavaScript
+            let representation = response.representation;
+            if (typeof representation === 'string') {
+                representation = JSON.parse(representation);
+            }
+            
+            const result = parseJsonToFlowchart(representation, language);
+            
+            if (result.nodes.length === 0) {
+                throw new Error('Не удалось создать блок-схему из результата парсера');
+            }
+            
+            state.nodes = result.nodes;
+            state.connections = result.connections;
+            state.selectedNodeId = null;
+            
+            addToHistory('Загружен исходный код и сгенерирована схема через парсер');
+            renderNodes();
+            renderInfoPanel();
+            renderComments();
+            showToast('Блок-схема сгенерирована из кода', 'success');
+        })
+        .catch(error => {
+            console.error('Ошибка при генерации блок-схемы:', error);
+            
+            // Показываем понятное сообщение об ошибке
+            let errorMessage = error.message || 'Ошибка при генерации блок-схемы';
+            
+            // Специальные сообщения для разных типов ошибок
+            if (errorMessage.includes('503') || errorMessage.includes('недоступен') || 
+                errorMessage.includes('упал') || errorMessage.includes('bad allocation')) {
+                errorMessage = 'Парсер не смог обработать код. Возможные причины:\n' +
+                    '• Код слишком сложный (много вложенных конструкций)\n' +
+                    '• Парсер упал из-за нехватки памяти\n' +
+                    '• Парсер не запущен на порту 8080\n\n' +
+                    'Попробуйте:\n' +
+                    '• Упростить код\n' +
+                    '• Разбить код на части\n' +
+                    '• Использовать упрощенный метод парсинга';
+                
+                // Всегда предлагаем fallback при ошибке парсера
+                showToast(errorMessage, 'error');
+                
+                // Небольшая задержка перед fallback, чтобы пользователь увидел сообщение
+                setTimeout(() => {
+                    try {
+                        console.log('Используется упрощенный метод парсинга (fallback)');
+                        state.nodes = parseCodeToFlowchart(code);
+                        state.connections = [];
+                        state.selectedNodeId = null;
+                        renderNodes();
+                        renderInfoPanel();
+                        renderComments();
+                        showToast('Использован упрощенный метод парсинга (без парсера)', 'error');
+                    } catch (fallbackError) {
+                        console.error('Ошибка при fallback парсинге:', fallbackError);
+                        showToast('Не удалось сгенерировать блок-схему', 'error');
+                    }
+                }, 2000);
+                return;
+            } else if (errorMessage.includes('504') || errorMessage.includes('Таймаут')) {
+                errorMessage = 'Таймаут запроса. Возможные причины:\n' +
+                    '1. Файл слишком большой\n' +
+                    '2. Парсер перегружен\n' +
+                    '3. Увеличьте таймаут в настройках бэкенда';
+            } else if (errorMessage.includes('401') || errorMessage.includes('авторизация')) {
+                errorMessage = 'Требуется авторизация. Пожалуйста, войдите в систему';
+                showToast(errorMessage, 'error');
+                return;
+            }
+            
+            showToast(errorMessage, 'error');
+            
+            // Fallback на старый метод парсинга только если это не критическая ошибка
+            if (!errorMessage.includes('недоступен') && !errorMessage.includes('авторизация') && 
+                !errorMessage.includes('упал') && !errorMessage.includes('bad allocation')) {
+                try {
+                    console.log('Используется упрощенный метод парсинга');
+                    state.nodes = parseCodeToFlowchart(code);
+                    state.connections = [];
+                    state.selectedNodeId = null;
+                    renderNodes();
+                    renderInfoPanel();
+                    renderComments();
+                    showToast('Использован упрощенный метод парсинга (без парсера)', 'error');
+                } catch (fallbackError) {
+                    console.error('Ошибка при fallback парсинге:', fallbackError);
+                    showToast('Не удалось сгенерировать блок-схему', 'error');
+                }
+            }
+        })
+        .finally(() => {
+            if (generateBtn) {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = originalText;
+            }
+        });
 }
 
 // History
@@ -1112,6 +2065,31 @@ function switchTab(tabName) {
     });
 }
 
+// Theme Management
+function toggleTheme() {
+    const html = document.documentElement;
+    const isDark = html.classList.contains('dark');
+    if (isDark) {
+        html.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+    } else {
+        html.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+    }
+}
+
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const html = document.documentElement;
+    
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+        html.classList.add('dark');
+    } else {
+        html.classList.remove('dark');
+    }
+}
+
 // Initialize editor when DOM is ready
 function initializeEditor() {
     // Check if required elements exist
@@ -1139,6 +2117,71 @@ function initializeEditor() {
             }
         });
     });
+    
+    // Initialize theme
+    initTheme();
+    
+    // Create theme toggle button if it doesn't exist
+    let themeToggleBtn = document.getElementById('theme-toggle');
+    if (!themeToggleBtn) {
+        const topBar = document.querySelector('.top-bar');
+        if (topBar) {
+            const zoomIndicator = topBar.querySelector('.zoom-indicator');
+            if (zoomIndicator) {
+                // Создаем контейнер для элементов управления
+                const controlsContainer = document.createElement('div');
+                controlsContainer.style.display = 'flex';
+                controlsContainer.style.alignItems = 'center';
+                controlsContainer.style.gap = '1rem';
+                
+                // Создаем кнопку переключения темы
+                themeToggleBtn = document.createElement('button');
+                themeToggleBtn.id = 'theme-toggle';
+                themeToggleBtn.className = 'control-btn';
+                themeToggleBtn.setAttribute('title', 'Переключить тему');
+                themeToggleBtn.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <span class="theme-toggle-text">Светлая</span>
+                `;
+                
+                controlsContainer.appendChild(themeToggleBtn);
+                controlsContainer.appendChild(zoomIndicator);
+                
+                // Заменяем zoom-indicator на контейнер
+                zoomIndicator.parentNode.replaceChild(controlsContainer, zoomIndicator);
+            }
+        }
+    }
+    
+    // Theme toggle button event
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', () => {
+            toggleTheme();
+            // Обновляем текст кнопки
+            const textSpan = themeToggleBtn.querySelector('.theme-toggle-text');
+            if (textSpan) {
+                const isDark = document.documentElement.classList.contains('dark');
+                textSpan.textContent = isDark ? 'Тёмная' : 'Светлая';
+            }
+        });
+        
+        // Устанавливаем начальный текст
+        const textSpan = themeToggleBtn.querySelector('.theme-toggle-text');
+        if (textSpan) {
+            const isDark = document.documentElement.classList.contains('dark');
+            textSpan.textContent = isDark ? 'Тёмная' : 'Светлая';
+        }
+    }
     
     // Control buttons
     const zoomInBtn = document.getElementById('zoom-in');
@@ -1183,6 +2226,26 @@ function initializeEditor() {
     if (!window._editorMouseEventsInitialized) {
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
+        
+        // Добавляем обработчик для перетаскивания канваса за пустое место
+        canvasWrapper.addEventListener('mousedown', (e) => {
+            // Проверяем, что клик не на ноде и не на connection point
+            const target = e.target;
+            if (target.closest('.flowchart-node') || target.closest('.node-connection-point')) {
+                return; // Не обрабатываем, если клик на ноде
+            }
+            
+            // Начинаем panning
+            state.isPanning = true;
+            state.panStart = { x: e.clientX, y: e.clientY };
+            const wrapper = document.getElementById('canvas-wrapper');
+            if (wrapper) {
+                state.panScroll = { x: wrapper.scrollLeft, y: wrapper.scrollTop };
+            }
+            canvasWrapper.style.cursor = 'grabbing';
+            e.preventDefault();
+        });
+        
         window._editorMouseEventsInitialized = true;
     }
     
