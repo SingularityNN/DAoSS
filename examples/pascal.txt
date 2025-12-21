@@ -21,8 +21,8 @@ begin
   if 5 mod 3 > 0 then begin
     Writeln('Yes,if 1');
     Writeln('Yes,if 2');
-  end;
-  case num1 of
+  end
+  case num1 of begin
     1, 2, 3: begin
       Writeln('Switch works 1');
     end;
