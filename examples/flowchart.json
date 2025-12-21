@@ -1,0 +1,14 @@
+{
+  "error": "Parsing failed",
+  "lexerErrors": [],
+  "parserErrors": [
+    {
+      "column": 1,
+      "line": 1,
+      "message": "bad allocation",
+      "position": 0,
+      "type": "ParserError"
+    }
+  ],
+  "success": false
+}
