@@ -9,8 +9,8 @@
     app:cardCornerRadius="12dp"
     app:cardElevation="0dp"
     app:strokeWidth="1dp"
-    app:strokeColor="?attr/colorOutline"
-    app:cardBackgroundColor="?attr/colorSurface"
+    app:strokeColor="#E0E0E0"
+    app:cardBackgroundColor="#3A3A3A"
     android:clickable="true"
     android:focusable="true"
     android:foreground="?attr/selectableItemBackground"
@@ -33,7 +33,7 @@
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:src="@android:drawable/ic_menu_view"
-                android:tint="?attr/colorPrimary"
+                android:tint="#FFFFFF"
                 android:layout_marginEnd="16dp"
                 android:contentDescription="Project icon"/>
 
@@ -47,7 +47,7 @@
                     android:id="@+id/tvProjectName"
                     android:textSize="16sp"
                     android:textStyle="bold"
-                    android:textColor="?attr/colorOnSurface"
+                    android:textColor="#FFFFFF"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:maxLines="1"
@@ -57,7 +57,7 @@
                 <TextView
                     android:id="@+id/tvProjectDescription"
                     android:textSize="14sp"
-                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textColor="#B0B0B0"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"

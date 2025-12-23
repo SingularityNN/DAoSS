@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface">
+    android:background="@drawable/bg_gradient">
 
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
@@ -15,12 +15,16 @@
             android:padding="32dp"
             android:gravity="center_horizontal"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:background="?attr/colorSurface"
+            android:layout_margin="24dp"
+            android:elevation="4dp"
+            android:layout_gravity="center_vertical">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Project Manager"
+                android:text="Block diagram editor"
                 android:textSize="28sp"
                 android:textStyle="bold"
                 android:textColor="?attr/colorOnSurface"
@@ -37,6 +41,7 @@
 
             <!-- Flat layout, no cards - Calm Professional SaaS style -->
             <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/nameInputLayout"
                 android:hint="Имя"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -49,6 +54,7 @@
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/loginInputLayout"
                 android:hint="Логин"
                 android:layout_marginTop="24dp"
                 android:layout_width="match_parent"
@@ -62,6 +68,7 @@
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/emailInputLayout"
                 android:hint="Email"
                 android:layout_marginTop="24dp"
                 android:layout_width="match_parent"
@@ -76,6 +83,7 @@
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/passwordInputLayout"
                 android:hint="Пароль"
                 android:layout_marginTop="24dp"
                 android:layout_width="match_parent"
@@ -99,7 +107,7 @@
                 android:minHeight="56dp"
                 android:textSize="16sp"
                 app:cornerRadius="16dp"
-                style="@style/Widget.Material3.Button"/>
+                style="@style/Widget.FlowchartEditorClient.Button"/>
 
         </LinearLayout>
 

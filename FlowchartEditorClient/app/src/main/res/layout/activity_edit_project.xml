@@ -13,7 +13,7 @@
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
-            android:title="Создать проект"
+            android:title="Редактировать проект"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="@drawable/toolbar_dark_gray"
@@ -33,7 +33,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
-            <!-- Flat layout, no cards - Calm Professional SaaS style -->
             <com.google.android.material.textfield.TextInputLayout
                 android:hint="Название проекта"
                 android:layout_width="match_parent"
@@ -64,9 +63,23 @@
 
             </com.google.android.material.textfield.TextInputLayout>
 
+            <com.google.android.material.textfield.TextInputLayout
+                android:hint="Видимость"
+                android:layout_marginTop="24dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+
+                <android.widget.Spinner
+                    android:id="@+id/spinnerVisibility"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"/>
+
+            </com.google.android.material.textfield.TextInputLayout>
+
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnCreate"
-                android:text="Создать проект"
+                android:id="@+id/btnSave"
+                android:text="Сохранить"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="32dp"
@@ -80,3 +93,4 @@
     </androidx.core.widget.NestedScrollView>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
+

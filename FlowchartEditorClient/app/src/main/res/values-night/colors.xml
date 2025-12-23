@@ -1,38 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Calm Professional SaaS - Cool Indigo/Blue Palette (Dark) -->
-    <!-- Primary: Muted Indigo - professional, calm -->
-    <color name="colorPrimary">#818CF8</color>
-    <color name="colorOnPrimary">#1E1B4B</color>
-    <color name="colorPrimaryContainer">#4338CA</color>
-    <color name="colorOnPrimaryContainer">#E0E7FF</color>
+    <!-- Frontend Color Scheme - Dark Theme -->
+    <!-- Primary: White from frontend dark theme -->
+    <color name="colorPrimary">#FBFBFB</color>
+    <color name="colorOnPrimary">#242424</color>
+    <color name="colorPrimaryContainer">#444444</color>
+    <color name="colorOnPrimaryContainer">#FBFBFB</color>
 
-    <!-- Secondary: Neutral gray-blue -->
-    <color name="colorSecondary">#94A3B8</color>
-    <color name="colorOnSecondary">#0F172A</color>
-    <color name="colorSecondaryContainer">#334155</color>
-    <color name="colorOnSecondaryContainer">#F1F5F9</color>
+    <!-- Secondary: Dark gray from frontend -->
+    <color name="colorSecondary">#444444</color>
+    <color name="colorOnSecondary">#FBFBFB</color>
+    <color name="colorSecondaryContainer">#444444</color>
+    <color name="colorOnSecondaryContainer">#FBFBFB</color>
 
-    <!-- Tertiary: Minimal, barely used -->
-    <color name="colorTertiary">#A5B4FC</color>
-    <color name="colorOnTertiary">#1E1B4B</color>
-    <color name="colorTertiaryContainer">#4F46E5</color>
-    <color name="colorOnTertiaryContainer">#EEF2FF</color>
+    <!-- Tertiary: Accent blue from frontend -->
+    <color name="colorTertiary">#3B82F6</color>
+    <color name="colorOnTertiary">#FFFFFF</color>
+    <color name="colorTertiaryContainer">#1E3A8A</color>
+    <color name="colorOnTertiaryContainer">#DBEAFE</color>
 
-    <!-- Background: Dark but not too dark -->
-    <color name="colorBackground">#0F172A</color>
-    <color name="colorOnBackground">#F1F5F9</color>
-    <color name="colorSurface">#1E293B</color>
-    <color name="colorOnSurface">#F1F5F9</color>
-    <!-- Surface variant: Subtle dark gray -->
-    <color name="colorSurfaceVariant">#334155</color>
-    <color name="colorOnSurfaceVariant">#CBD5E1</color>
-    <color name="colorOutline">#475569</color>
+    <!-- Background: Dark from frontend -->
+    <color name="colorBackground">#242424</color>
+    <color name="colorOnBackground">#FBFBFB</color>
+    <color name="colorSurface">#242424</color>
+    <color name="colorOnSurface">#FBFBFB</color>
+    <!-- Surface variant: Dark gray from frontend -->
+    <color name="colorSurfaceVariant">#444444</color>
+    <color name="colorOnSurfaceVariant">#B5B5B5</color>
+    <color name="colorOutline">#444444</color>
 
-    <!-- Error: Subtle, not aggressive -->
-    <color name="colorError">#F87171</color>
-    <color name="colorOnError">#7F1D1D</color>
-    <color name="colorErrorContainer">#991B1B</color>
+    <!-- Error: Destructive red from frontend dark theme -->
+    <color name="colorError">#E65C7A</color>
+    <color name="colorOnError">#FFFFFF</color>
+    <color name="colorErrorContainer">#991F1F</color>
     <color name="colorOnErrorContainer">#FEE2E2</color>
+
+    <!-- Additional colors from frontend -->
+    <color name="accent">#3B82F6</color>
+    <color name="accentHover">#2563EB</color>
+    <color name="inputBackground">#444444</color>
+    <color name="muted">#444444</color>
+    <color name="mutedForeground">#B5B5B5</color>
 </resources>
 

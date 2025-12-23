@@ -13,7 +13,7 @@
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
-            android:title="Участники проекта"
+            android:title="Мои приглашения"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="@drawable/toolbar_dark_gray"
@@ -28,11 +28,11 @@
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recyclerMembers"
+            android:id="@+id/recyclerInvitations"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:paddingTop="16dp"
-            android:paddingBottom="88dp"
+            android:paddingBottom="16dp"
             android:clipToPadding="false"
             android:visibility="visible"/>
 
@@ -48,7 +48,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Нет участников"
+                android:text="Нет приглашений"
                 android:textSize="18sp"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textStyle="bold"
@@ -58,7 +58,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Добавьте участников в проект"
+                android:text="У вас пока нет приглашений в проекты"
                 android:textSize="14sp"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:gravity="center"
@@ -67,29 +67,6 @@
         </LinearLayout>
 
     </FrameLayout>
-
-    <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
-        android:id="@+id/fabAddMember"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_margin="24dp"
-        android:text="Добавить участника"
-        android:icon="@android:drawable/ic_input_add"
-        app:iconTint="#FFFFFF"
-        app:backgroundTint="#667eea"
-        app:cornerRadius="16dp"
-        app:elevation="2dp"/>
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnViewInvitations"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|start"
-        android:layout_margin="24dp"
-        android:text="Приглашения"
-        android:icon="@android:drawable/ic_menu_share"
-        style="@style/Widget.Material3.Button.OutlinedButton"/>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
 

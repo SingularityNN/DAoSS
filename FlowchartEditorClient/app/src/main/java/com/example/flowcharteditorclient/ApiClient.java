@@ -1,6 +1,9 @@
 package com.example.flowcharteditorclient;
 import android.content.Context;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+
 import okhttp3.OkHttpClient;
 import okhttp3.logging.HttpLoggingInterceptor;
 
@@ -17,6 +20,11 @@ public class ApiClient {
                     new HttpLoggingInterceptor();
             logging.setLevel(HttpLoggingInterceptor.Level.BODY);
 
+            // Настраиваем Gson для сериализации null значений
+            Gson gson = new GsonBuilder()
+                    .serializeNulls() // Включаем сериализацию null значений
+                    .create();
+
             OkHttpClient client = new OkHttpClient.Builder()
                     .addInterceptor(new AuthInterceptor(context))
                     .addInterceptor(logging)
@@ -24,7 +32,7 @@ public class ApiClient {
 
             retrofit = new Retrofit.Builder()
                     .baseUrl(BuildConfig.BASE_URL)
-                    .addConverterFactory(GsonConverterFactory.create())
+                    .addConverterFactory(GsonConverterFactory.create(gson))
                     .client(client)
                     .build();
         }

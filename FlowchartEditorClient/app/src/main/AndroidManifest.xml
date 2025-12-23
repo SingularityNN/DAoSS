@@ -49,6 +49,22 @@
         <activity
             android:name=".AddMemberActivity"
             android:exported="false" />
+            
+        <activity
+            android:name=".InvitationsListActivity"
+            android:exported="false" />
+            
+        <activity
+            android:name=".ProjectInvitationsActivity"
+            android:exported="false" />
+            
+        <activity
+            android:name=".EditProjectActivity"
+            android:exported="false" />
+            
+        <activity
+            android:name=".ProjectDetailsActivity"
+            android:exported="false" />
     </application>
 
 </manifest>

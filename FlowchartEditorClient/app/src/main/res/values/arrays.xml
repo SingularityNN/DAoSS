@@ -8,5 +8,9 @@
         <item>reviewer</item>
         <item>admin</item>
     </string-array>
+    <string-array name="visibility_options">
+        <item>private</item>
+        <item>public</item>
+    </string-array>
 </resources>
 

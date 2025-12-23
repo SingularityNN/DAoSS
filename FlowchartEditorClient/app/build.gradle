@@ -16,10 +16,11 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
         // Base URL для API
-        // Для Android Emulator используйте: http://10.0.2.2:5143
-        // Для реального устройства используйте IP вашего компьютера: http://192.168.x.x:5143
+        // Для Android Emulator используйте: http://10.0.2.2:5143/
+        // Для реального устройства через Wi-Fi используйте IP вашего компьютера: http://192.168.x.x:5143/
+        // Для USB-тетеринга используйте: http://192.168.137.1:5143/
         // Для HTTPS localhost нужны дополнительные настройки безопасности
-        buildConfigField "String", "BASE_URL", "\"http://10.0.2.2:5143/\""
+        buildConfigField "String", "BASE_URL", "\"http://192.168.0.9:5143/\""
     }
     
     buildFeatures {
@@ -65,6 +66,12 @@ dependencies {
     
     // CoordinatorLayout (входит в Material, но добавим явно для надежности)
     implementation libs.coordinatorlayout
+
+    // ViewPager2 для вкладок
+    implementation libs.viewpager2
+    
+    // Fragment для фрагментов
+    implementation libs.fragment
 
     implementation libs.core.ktx
 }

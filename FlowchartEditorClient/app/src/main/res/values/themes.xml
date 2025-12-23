@@ -32,4 +32,17 @@
     </style>
 
     <style name="Theme.FlowchartEditorClient" parent="Base.Theme.FlowchartEditorClient" />
+
+    <!-- Custom button style using accent color (Tertiary) -->
+    <style name="Widget.FlowchartEditorClient.Button" parent="Widget.Material3.Button">
+        <item name="backgroundTint">@color/colorTertiary</item>
+        <item name="android:textColor">@color/colorOnTertiary</item>
+    </style>
+
+    <!-- Custom FAB style with gradient colors -->
+    <style name="Widget.FlowchartEditorClient.ExtendedFAB" parent="Widget.Material3.ExtendedFloatingActionButton.Primary">
+        <item name="backgroundTint">#667eea</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="iconTint">#FFFFFF</item>
+    </style>
 </resources>

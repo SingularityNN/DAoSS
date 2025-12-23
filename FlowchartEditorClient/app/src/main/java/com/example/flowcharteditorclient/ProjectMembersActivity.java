@@ -21,6 +21,7 @@ public class ProjectMembersActivity extends AppCompatActivity {
 
     private RecyclerView recyclerView;
     private ExtendedFloatingActionButton fabAdd;
+    private com.google.android.material.button.MaterialButton btnViewInvitations;
     private ProjectMembersApi membersApi;
     private String projectId;
     private ProjectMemberAdapter adapter;
@@ -32,14 +33,21 @@ public class ProjectMembersActivity extends AppCompatActivity {
         setContentView(R.layout.activity_project_members);
 
         projectId = getIntent().getStringExtra("PROJECT_ID");
+        if (projectId != null) {
+            projectId = projectId.trim();
+        }
         if (projectId == null || projectId.isEmpty()) {
+            android.util.Log.e("ProjectMembersActivity",
+                    "PROJECT_ID is null or empty. Intent extras: " + getIntent().getExtras());
             Toast.makeText(this, "Project ID not provided", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
+        android.util.Log.d("ProjectMembersActivity", "Received PROJECT_ID: " + projectId);
 
         recyclerView = findViewById(R.id.recyclerMembers);
         fabAdd = findViewById(R.id.fabAddMember);
+        btnViewInvitations = findViewById(R.id.btnViewInvitations);
         emptyView = findViewById(R.id.emptyView);
 
         androidx.appcompat.widget.Toolbar toolbar = findViewById(R.id.toolbar);
@@ -59,6 +67,13 @@ public class ProjectMembersActivity extends AppCompatActivity {
             intent.putExtra("PROJECT_ID", projectId);
             startActivity(intent);
         });
+
+        btnViewInvitations.setOnClickListener(v -> {
+            Intent intent = new Intent(ProjectMembersActivity.this,
+                    ProjectInvitationsActivity.class);
+            intent.putExtra("PROJECT_ID", projectId);
+            startActivity(intent);
+        });
     }
 
     @Override
@@ -71,25 +86,48 @@ public class ProjectMembersActivity extends AppCompatActivity {
         membersApi.getMembers(projectId).enqueue(new Callback<List<ProjectMember>>() {
             @Override
             public void onResponse(@NonNull Call<List<ProjectMember>> call,
-                                   @NonNull Response<List<ProjectMember>> response) {
+                    @NonNull Response<List<ProjectMember>> response) {
 
                 if (response.isSuccessful() && response.body() != null) {
                     List<ProjectMember> members = response.body();
+                    // Логируем для отладки
+                    android.util.Log.d("ProjectMembersActivity", "Received " + members.size() + " members");
+                    for (int i = 0; i < members.size(); i++) {
+                        ProjectMember member = members.get(i);
+                        android.util.Log.d("ProjectMembersActivity",
+                                "Member[" + i + "] - UserId: '" + member.userId +
+                                        "', Role: '" + member.role +
+                                        "', ProjectId: '" + member.projectId + "'");
+                        if (member.userId == null) {
+                            android.util.Log.e("ProjectMembersActivity", "Member[" + i + "] has null userId!");
+                        }
+                    }
                     updateUI(members);
-                } else if (response.code() == 401) {
-                    handleUnauthorized();
                 } else {
-                    Toast.makeText(ProjectMembersActivity.this,
-                            "Failed to load members",
-                            Toast.LENGTH_SHORT).show();
-                    // Показываем empty view при ошибке загрузки
-                    updateUI(java.util.Collections.emptyList());
+                    android.util.Log.e("ProjectMembersActivity", "Failed to load members: " + response.code());
+                    if (response.errorBody() != null) {
+                        try {
+                            String errorBody = response.errorBody().string();
+                            android.util.Log.e("ProjectMembersActivity", "Error body: " + errorBody);
+                        } catch (Exception e) {
+                            android.util.Log.e("ProjectMembersActivity", "Error reading error body", e);
+                        }
+                    }
+                    if (response.code() == 401) {
+                        handleUnauthorized();
+                    } else {
+                        Toast.makeText(ProjectMembersActivity.this,
+                                "Failed to load members",
+                                Toast.LENGTH_SHORT).show();
+                        // Показываем empty view при ошибке загрузки
+                        updateUI(java.util.Collections.emptyList());
+                    }
                 }
             }
 
             @Override
             public void onFailure(@NonNull Call<List<ProjectMember>> call,
-                                  @NonNull Throwable t) {
+                    @NonNull Throwable t) {
                 Toast.makeText(ProjectMembersActivity.this,
                         "Network error",
                         Toast.LENGTH_SHORT).show();
@@ -98,25 +136,46 @@ public class ProjectMembersActivity extends AppCompatActivity {
             }
         });
     }
-    
+
     private void updateUI(List<ProjectMember> members) {
-        // Если в списке только владелец (роль owner или не задана) — считаем, что участников нет
-        if (members.size() == 1) {
-            ProjectMember only = members.get(0);
-            if (only.role == null || only.role.isEmpty() || only.role.equalsIgnoreCase("owner")) {
-                members = java.util.Collections.emptyList();
+        android.util.Log.d("ProjectMembersActivity", "updateUI called with " + members.size() + " members");
+
+        // Фильтруем участников - исключаем только owner, но показываем всех остальных
+        List<ProjectMember> filteredMembers = new java.util.ArrayList<>();
+        for (ProjectMember member : members) {
+            // Показываем всех участников, включая owner (но можно скрыть, если нужно)
+            // Исключаем только если роль явно owner и это единственный участник
+            if (member.userId != null && !member.userId.isEmpty()) {
+                filteredMembers.add(member);
+                android.util.Log.d("ProjectMembersActivity",
+                        "Added member: " + member.userId + ", role: " + member.role);
+            } else {
+                android.util.Log.w("ProjectMembersActivity", "Skipping member with null/empty userId");
             }
         }
 
-        if (members.isEmpty()) {
+        if (filteredMembers.isEmpty()) {
+            android.util.Log.d("ProjectMembersActivity", "No members to display, showing empty view");
             recyclerView.setVisibility(android.view.View.GONE);
             emptyView.setVisibility(android.view.View.VISIBLE);
+            // Очищаем адаптер
+            if (adapter != null) {
+                recyclerView.setAdapter(null);
+                adapter = null;
+            }
         } else {
+            android.util.Log.d("ProjectMembersActivity", "Displaying " + filteredMembers.size() + " members");
             recyclerView.setVisibility(android.view.View.VISIBLE);
             emptyView.setVisibility(android.view.View.GONE);
-            adapter = new ProjectMemberAdapter(members, membersApi, projectId);
+            adapter = new ProjectMemberAdapter(filteredMembers, membersApi, projectId, this);
             adapter.setOnMemberRemovedListener(() -> {
                 // Обновляем список после удаления
+                android.util.Log.d("ProjectMembersActivity", "Member removed, reloading list");
+                loadMembers();
+            });
+            adapter.setOnRoleUpdatedListener(() -> {
+                // Обновляем список после изменения роли
+                android.util.Log.d("ProjectMembersActivity", "Role updated, reloading list");
                 loadMembers();
             });
             recyclerView.setAdapter(adapter);
@@ -137,4 +196,3 @@ public class ProjectMembersActivity extends AppCompatActivity {
         return true;
     }
 }
-

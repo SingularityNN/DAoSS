@@ -62,30 +62,12 @@ public class ProjectListActivity extends AppCompatActivity {
         if (item.getItemId() == R.id.menu_logout) {
             logout();
             return true;
-        } else if (item.getItemId() == R.id.menu_my_id) {
-            showMyId();
+        } else if (item.getItemId() == R.id.menu_invitations) {
+            Intent intent = new Intent(ProjectListActivity.this, InvitationsListActivity.class);
+            startActivity(intent);
             return true;
         }
         return super.onOptionsItemSelected(item);
-    }
-    
-    private void showMyId() {
-        if (currentUserId != null && !currentUserId.isEmpty()) {
-            new android.app.AlertDialog.Builder(this)
-                    .setTitle("My User ID")
-                    .setMessage(currentUserId)
-                    .setPositiveButton("Copy", (dialog, which) -> {
-                        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) 
-                                getSystemService(android.content.Context.CLIPBOARD_SERVICE);
-                        android.content.ClipData clip = android.content.ClipData.newPlainText("User ID", currentUserId);
-                        clipboard.setPrimaryClip(clip);
-                        Toast.makeText(this, "User ID copied to clipboard", Toast.LENGTH_SHORT).show();
-                    })
-                    .setNegativeButton("Close", null)
-                    .show();
-        } else {
-            Toast.makeText(this, "User ID not available", Toast.LENGTH_SHORT).show();
-        }
     }
 
     private void logout() {
@@ -107,7 +89,7 @@ public class ProjectListActivity extends AppCompatActivity {
         authApi.getCurrentUser().enqueue(new Callback<UserInfo>() {
             @Override
             public void onResponse(@NonNull Call<UserInfo> call,
-                                   @NonNull Response<UserInfo> response) {
+                    @NonNull Response<UserInfo> response) {
                 if (response.isSuccessful() && response.body() != null) {
                     currentUserId = response.body().sub;
                     loadProjects();
@@ -122,7 +104,7 @@ public class ProjectListActivity extends AppCompatActivity {
 
             @Override
             public void onFailure(@NonNull Call<UserInfo> call,
-                                  @NonNull Throwable t) {
+                    @NonNull Throwable t) {
                 Toast.makeText(ProjectListActivity.this,
                         "Network error",
                         Toast.LENGTH_SHORT).show();
@@ -140,11 +122,26 @@ public class ProjectListActivity extends AppCompatActivity {
 
             @Override
             public void onResponse(@NonNull Call<List<Project>> call,
-                                   @NonNull Response<List<Project>> response) {
+                    @NonNull Response<List<Project>> response) {
 
                 if (response.isSuccessful() && response.body() != null) {
-                    ProjectAdapter adapter =
-                            new ProjectAdapter(response.body());
+                    List<Project> projects = response.body();
+                    // Логируем для отладки
+                    android.util.Log.d("ProjectListActivity", "Received " + projects.size() + " projects");
+                    for (Project project : projects) {
+                        android.util.Log.d("ProjectListActivity",
+                                "Project - name: '" + project.name + "', id: " + project.id +
+                                        ", description: '" + project.description + "'");
+                        if (project.name == null || project.name.isEmpty()) {
+                            android.util.Log.e("ProjectListActivity",
+                                    "Project name is null or empty for project with id: " + project.id);
+                        }
+                        if (project.id == null || project.id.isEmpty()) {
+                            android.util.Log.e("ProjectListActivity",
+                                    "Project ID is null or empty for: " + project.name);
+                        }
+                    }
+                    ProjectAdapter adapter = new ProjectAdapter(projects);
                     recyclerView.setAdapter(adapter);
                 } else if (response.code() == 401) {
                     logout();
@@ -157,7 +154,7 @@ public class ProjectListActivity extends AppCompatActivity {
 
             @Override
             public void onFailure(@NonNull Call<List<Project>> call,
-                                  @NonNull Throwable t) {
+                    @NonNull Throwable t) {
                 Toast.makeText(ProjectListActivity.this,
                         "Network error",
                         Toast.LENGTH_SHORT).show();
@@ -165,4 +162,3 @@ public class ProjectListActivity extends AppCompatActivity {
         });
     }
 }
-

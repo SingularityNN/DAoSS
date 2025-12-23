@@ -7,6 +7,7 @@ import retrofit2.http.Body;
 import retrofit2.http.DELETE;
 import retrofit2.http.GET;
 import retrofit2.http.POST;
+import retrofit2.http.PUT;
 import retrofit2.http.Path;
 
 public interface ProjectMembersApi {
@@ -19,5 +20,8 @@ public interface ProjectMembersApi {
 
     @DELETE("/api/projects/{projectId}/members/{userId}")
     Call<Void> removeMember(@Path("projectId") String projectId, @Path("userId") String userId);
+    
+    @PUT("/api/projects/{projectId}/members/{userId}")
+    Call<ProjectMember> updateMemberRole(@Path("projectId") String projectId, @Path("userId") String userId, @Body UpdateRoleRequest request);
 }
 

@@ -3,16 +3,16 @@ package com.example.flowcharteditorclient;
 import com.google.gson.annotations.SerializedName;
 
 public class ProjectMember {
-    @SerializedName("ProjectId")
+    @SerializedName(value = "ProjectId", alternate = {"projectId"})
     public String projectId;
     
-    @SerializedName("UserId")
+    @SerializedName(value = "UserId", alternate = {"userId"})
     public String userId;
     
-    @SerializedName("Role")
+    @SerializedName(value = "Role", alternate = {"role"})
     public String role;
     
-    @SerializedName("CreatedAt")
+    @SerializedName(value = "CreatedAt", alternate = {"createdAt"})
     public String createdAt;
 }
 
