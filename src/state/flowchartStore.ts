@@ -1,5 +1,7 @@
 // State management для блок-схемы
 import type { FlowchartState, FlowchartNode, Connection, HistoryEntry } from '../types/flowchart';
+import type { ASTProgram, PascalProgram } from '../types/parser';
+import { flowchartToJSON } from '../converters';
 
 /**
  * Создает начальное состояние блок-схемы
@@ -58,6 +60,7 @@ export function createInitialState(): FlowchartState {
                 connections: []
             }
         ],
+        historyIndex: 0, // Начальный индекс истории
         zoom: 1,
         sourceCode: '',
         draggedNode: null,
@@ -176,9 +179,70 @@ export class FlowchartStore {
 
     // История
     addHistoryEntry(entry: HistoryEntry): void {
+        // Удаляем все записи после текущего индекса (если сделали новое изменение после undo)
+        const newHistory = this.state.history.slice(0, this.state.historyIndex + 1);
+        
+        // Добавляем новую запись
+        newHistory.push(entry);
+        
         this.setState({
-            history: [...this.state.history, entry]
+            history: newHistory,
+            historyIndex: newHistory.length - 1
         });
+    }
+
+    /**
+     * Откатывает последнее изменение (undo)
+     */
+    undo(): boolean {
+        if (this.state.historyIndex > 0) {
+            const newIndex = this.state.historyIndex - 1;
+            const entry = this.state.history[newIndex];
+            
+            // Восстанавливаем состояние из истории
+            this.setState({
+                nodes: JSON.parse(JSON.stringify(entry.nodes)),
+                connections: JSON.parse(JSON.stringify(entry.connections)),
+                historyIndex: newIndex
+            });
+            
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Повторяет отмененное изменение (redo)
+     */
+    redo(): boolean {
+        if (this.state.historyIndex < this.state.history.length - 1) {
+            const newIndex = this.state.historyIndex + 1;
+            const entry = this.state.history[newIndex];
+            
+            // Восстанавливаем состояние из истории
+            this.setState({
+                nodes: JSON.parse(JSON.stringify(entry.nodes)),
+                connections: JSON.parse(JSON.stringify(entry.connections)),
+                historyIndex: newIndex
+            });
+            
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Проверяет, можно ли выполнить undo
+     */
+    canUndo(): boolean {
+        return this.state.historyIndex > 0;
+    }
+
+    /**
+     * Проверяет, можно ли выполнить redo
+     */
+    canRedo(): boolean {
+        return this.state.historyIndex < this.state.history.length - 1;
     }
 
     // Зум
@@ -199,6 +263,13 @@ export class FlowchartStore {
     // Соединение
     setConnectingFrom(nodeId: string | null, port: 'top' | 'right' | 'bottom' | 'left' | null = null): void {
         this.setState({ connectingFrom: nodeId, connectingFromPort: port });
+    }
+
+    /**
+     * Восстанавливает JSON (AST/SPR) из текущего состояния блок-схемы
+     */
+    getRestoredJSON(): ASTProgram | PascalProgram | null {
+        return flowchartToJSON(this.state.nodes, this.state.connections);
     }
 }
 

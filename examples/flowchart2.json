@@ -75,7 +75,7 @@
           },
           "name": "PI_CONST",
           "type": "VarDeclStmt",
-          "varType": "float"
+          "varType": "const "
         },
         {
           "initializer": {

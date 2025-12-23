@@ -61,7 +61,11 @@ function processPascalBlock(
             const ioText = expr.value || '';
             const nodeType = getIOType(ioText);
             const displayText = truncateText(ioText, 30);
-            currentNode = createNode(nodeType, displayText, ioText);
+            currentNode = createNode(nodeType, displayText, ioText, undefined, undefined, undefined, {
+                astElement: expr,
+                language: 'pascal',
+                nodeType: expr.type
+            });
             
             // Соединяем с предыдущими элементами
             previousExitNodes.forEach(prevExit => {
@@ -78,7 +82,11 @@ function processPascalBlock(
         } else if (expr.type === 'assign') {
             // Присваивание
             const text = expr.value || 'Присваивание';
-            currentNode = createNode('process', truncateText(text, 30), expr.value || '');
+            currentNode = createNode('process', truncateText(text, 30), expr.value || '', undefined, undefined, undefined, {
+                astElement: expr,
+                language: 'pascal',
+                nodeType: expr.type
+            });
             
             // Соединяем с предыдущими элементами
             previousExitNodes.forEach(prevExit => {
@@ -95,7 +103,11 @@ function processPascalBlock(
         } else if (expr.type === 'if' || expr.type === 'If') {
             // Условие if
             const conditionText = expr.condition || 'Условие';
-            currentNode = createNode('decision', truncateText(conditionText, 30), expr.condition || '');
+            currentNode = createNode('decision', truncateText(conditionText, 30), expr.condition || '', undefined, undefined, undefined, {
+                astElement: expr,
+                language: 'pascal',
+                nodeType: expr.type
+            });
             
             // Соединяем условие с предыдущими элементами
             previousExitNodes.forEach(prevExit => {
@@ -140,17 +152,28 @@ function processPascalBlock(
             const nextExpr = i + 1 < expressions.length ? expressions[i + 1][1] : null;
             if (nextExpr && (nextExpr.type === 'else' || nextExpr.type === 'Else')) {
                 // Обрабатываем else
-                i++; // Пропускаем else, он обработается здесь
+                i++; // Пропускаем else в основном цикле, он обработается здесь
+                
+                // Создаем else-узел как отдельный узел для возможности восстановления
+                // Используем правильный порядок параметров: type, text, codeRef, width, height, functionBody, metadata
+                const elseNode = createNode('process', 'else', 'else', null, null, undefined, {
+                    astElement: nextExpr,
+                    language: 'pascal',
+                    nodeType: 'else'
+                });
+                
+                // Соединяем if с else-узлом (для визуализации связи)
+                createConnection(currentNode, elseNode, 'right', 'top', 'false');
                 
                 let falseExitNode: FlowchartNode | FlowchartNode[] | null = null;
                 if (nextExpr.body && typeof nextExpr.body === 'object') {
-                    const elseResult = processPascalBlock(nextExpr.body, currentNode, createNode, createConnection);
+                    const elseResult = processPascalBlock(nextExpr.body, elseNode, createNode, createConnection);
                     const elseBodyNodes = elseResult.nodes || [];
                     const elseExitNodes = elseResult.exitNodes || [];
                     
                     if (elseBodyNodes.length > 0) {
-                        // Соединяем условие с первой нодой else (ветка "false" - справа)
-                        createConnection(currentNode, elseBodyNodes[0], 'right', 'top', 'false');
+                        // Соединяем else-узел с первой нодой else body
+                        createConnection(elseNode, elseBodyNodes[0], 'bottom', 'top');
                         if (elseExitNodes.length > 0) {
                             const normalizedExits = elseExitNodes.map(exit => {
                                 const normalized = normalizeExitNode(exit);
@@ -161,10 +184,10 @@ function processPascalBlock(
                             falseExitNode = elseBodyNodes[elseBodyNodes.length - 1];
                         }
                     } else {
-                        falseExitNode = currentNode;
+                        falseExitNode = elseNode;
                     }
                 } else {
-                    falseExitNode = currentNode;
+                    falseExitNode = elseNode;
                 }
                 
                 // Для if/else выходы - это оба exitNode'а веток
@@ -175,9 +198,9 @@ function processPascalBlock(
                 });
                 const falseExits = Array.isArray(falseExitNode) ? falseExitNode : [falseExitNode];
                 falseExits.forEach(exit => {
-                    if (exit && exit !== currentNode) exitNodes.push(exit);
+                    if (exit && exit !== currentNode && exit !== elseNode) exitNodes.push(exit);
                 });
-                if (exitNodes.length === 0) exitNodes = [currentNode];
+                if (exitNodes.length === 0) exitNodes = [elseNode];
             } else {
                 // Нет else - выходы: ветка true и ветка false (само условие через правый порт)
                 exitNodes = [];
@@ -193,7 +216,11 @@ function processPascalBlock(
         } else if (expr.type === 'while' || expr.type === 'While') {
             // Цикл while
             const conditionText = expr.condition || 'Условие цикла';
-            currentNode = createNode('decision', truncateText(conditionText, 30), expr.condition || '');
+            currentNode = createNode('decision', truncateText(conditionText, 30), expr.condition || '', undefined, undefined, undefined, {
+                astElement: expr,
+                language: 'pascal',
+                nodeType: expr.type
+            });
             
             // Соединяем условие с предыдущими элементами
             previousExitNodes.forEach(prevExit => {
@@ -231,7 +258,11 @@ function processPascalBlock(
         } else if (expr.type === 'for' || expr.type === 'For') {
             // Цикл for
             const conditionText = expr.condition || 'Цикл for';
-            currentNode = createNode('decision', truncateText(conditionText, 30), expr.condition || '');
+            currentNode = createNode('decision', truncateText(conditionText, 30), expr.condition || '', undefined, undefined, undefined, {
+                astElement: expr,
+                language: 'pascal',
+                nodeType: expr.type
+            });
             
             // Соединяем условие с предыдущими элементами
             previousExitNodes.forEach(prevExit => {
@@ -305,7 +336,11 @@ function processPascalBlock(
             }
             
             // Создаем ноду условия (после тела)
-            currentNode = createNode('decision', truncateText(conditionText, 30), expr.condition || '');
+            currentNode = createNode('decision', truncateText(conditionText, 30), expr.condition || '', undefined, undefined, undefined, {
+                astElement: expr,
+                language: 'pascal',
+                nodeType: expr.type
+            });
             blockNodes.push(currentNode);
             
             // Соединяем последние элементы тела к условию (безымянная ветка)
@@ -334,7 +369,11 @@ function processPascalBlock(
         } else if (expr.type === 'caseOf') {
             // Case of
             const caseText = `Case: ${expr.compareValue || ''}`;
-            currentNode = createNode('decision', truncateText(caseText, 30), expr.compareValue || '');
+            currentNode = createNode('decision', truncateText(caseText, 30), expr.compareValue || '', undefined, undefined, undefined, {
+                astElement: expr,
+                language: 'pascal',
+                nodeType: expr.type
+            });
             
             // Соединяем условие с предыдущими элементами
             previousExitNodes.forEach(prevExit => {
@@ -389,7 +428,11 @@ function processPascalBlock(
         } else if (expr.value) {
             // Простое выражение
             const text = expr.value;
-            currentNode = createNode('process', truncateText(text, 30), expr.value);
+            currentNode = createNode('process', truncateText(text, 30), expr.value, undefined, undefined, undefined, {
+                astElement: expr,
+                language: 'pascal',
+                nodeType: expr.type
+            });
             
             // Соединяем с предыдущими элементами
             previousExitNodes.forEach(prevExit => {
@@ -452,7 +495,13 @@ export function parsePascalToFlowchart(
     );
     
     const program = jsonData.program;
-    const startNode = createNode('start', 'Начало', '');
+    // Сохраняем имя программы в metadata startNode для последующего восстановления
+    const programName = program.name || 'program';
+    const startNode = createNode('start', 'Начало', '', undefined, undefined, undefined, {
+        astElement: { programName },
+        language: 'pascal',
+        nodeType: 'program'
+    });
     let lastMainNode: FlowchartNode = startNode;
     
     const sections = program.sections || {};
@@ -466,7 +515,11 @@ export function parsePascalToFlowchart(
             
             const funcDecl = funcExpr as PascalFunction | PascalProcedure;
             const declText = funcDecl.declaration || 'Без объявления';
-            const funcNode = createNode('process', truncateText(declText, 50), declText);
+            const funcNode = createNode('process', truncateText(declText, 50), declText, undefined, undefined, undefined, {
+                astElement: funcExpr,
+                language: 'pascal',
+                nodeType: funcDecl.type
+            });
             
             // Соединяем с предыдущей нодой
             if (lastMainNode !== startNode) {
@@ -499,7 +552,11 @@ export function parsePascalToFlowchart(
                 continue;
             }
             
-            const constNode = createNode('process', truncateText(constText, 30), constText);
+            const constNode = createNode('process', truncateText(constText, 30), constText, undefined, undefined, undefined, {
+                astElement: constExpr,
+                language: 'pascal',
+                nodeType: typeof constExpr === 'string' ? 'string' : (constExpr && typeof constExpr === 'object' ? (constExpr as any).type || 'assign' : 'string')
+            });
             
             if (lastMainNode) {
                 createConnection(lastMainNode, constNode);
@@ -523,7 +580,11 @@ export function parsePascalToFlowchart(
                 varText = (varExpr as any).value || 'Переменная';
             }
             
-            const varNode = createNode('process', truncateText(varText, 30), varText);
+            const varNode = createNode('process', truncateText(varText, 30), varText, undefined, undefined, undefined, {
+                astElement: varExpr,
+                language: 'pascal',
+                nodeType: typeof varExpr === 'string' ? 'string' : 'assign'
+            });
             
             if (lastMainNode !== startNode) {
                 createConnection(lastMainNode, varNode);

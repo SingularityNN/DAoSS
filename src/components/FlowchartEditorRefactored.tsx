@@ -17,6 +17,8 @@ import { initTheme, toggleTheme as toggleThemeUtil } from '../utils/themeUtils';
 import { initializeFileUpload, initializeComments, initializeTabs } from '../utils/editorInitializer';
 import { renderTemporaryConnection } from '../rendering/connectionRenderer';
 import type { NodeType, PortType, FlowchartNode, Connection } from '../types/flowchart';
+import { flowchartToJSON } from '../converters';
+import { api } from '../services/api';
 
 function FlowchartEditorRefactored() {
   const editorRef = useRef<HTMLDivElement>(null);
@@ -94,6 +96,9 @@ function FlowchartEditorRefactored() {
     zoom: 1,
     draggedNodeId: null
   });
+
+  // Ref для функции renderFlowchart, чтобы она была доступна в обработчиках
+  const renderFlowchartFnRef = useRef<(() => void) | null>(null);
   
   // Обновляем ref при изменении значений
   useEffect(() => {
@@ -143,6 +148,10 @@ function FlowchartEditorRefactored() {
       }
     );
 
+    // Применяем zoom к контейнеру
+    flowchartCanvas.style.transform = `scale(${currentState.zoom})`;
+    flowchartCanvas.style.transformOrigin = 'top left';
+    
     // Рендерим узлы
     // Если узел перетаскивается, пропускаем его перерисовку чтобы сохранить позицию из DOM
     renderAllNodes(
@@ -183,33 +192,62 @@ function FlowchartEditorRefactored() {
         },
         onPortClick: (nodeId, port, event) => {
           event.stopPropagation();
-          if (flowchartStore.connectingFrom) {
+          event.preventDefault();
+          
+          // Получаем актуальное состояние напрямую из store
+          const currentState = flowchartStore.store.getState();
+          const connectingFrom = currentState.connectingFrom;
+          const connectingFromPort = currentState.connectingFromPort;
+          
+          if (connectingFrom) {
+            // Проверяем, не кликаем ли мы на тот же узел, откуда начали соединение
+            if (connectingFrom === nodeId) {
+              // Если кликнули на тот же узел, но другой порт - отменяем режим соединения
+              if (connectingFromPort !== port) {
+                flowchartStore.setConnectingFrom(null, null);
+                showToast('Соединение отменено', 'info');
+                renderFlowchart();
+              }
+              return;
+            }
+            
             // Завершаем соединение
             const newConnection = createConnection(
-              flowchartStore.connectingFrom,
-              flowchartStore.connectingFromPort || 'bottom',
+              connectingFrom,
+              connectingFromPort || 'bottom',
               nodeId,
               port,
-              flowchartStore.nodes,
-              flowchartStore.connections
+              currentState.nodes,
+              currentState.connections
             );
+            
             if (newConnection) {
               flowchartStore.addConnection(newConnection);
+              // Очищаем режим соединения ПЕРЕД добавлением в историю
               flowchartStore.setConnectingFrom(null, null);
+              
+              // Получаем обновленное состояние после добавления соединения
+              const updatedState = flowchartStore.store.getState();
               flowchartStore.addHistoryEntry(addHistoryEntry(
                 'Добавлена связь между блоками',
-                flowchartStore.nodes,
-                flowchartStore.connections,
-                flowchartStore.history
-              )[flowchartStore.history.length]);
-              showToast('Связь добавлена');
+                updatedState.nodes,
+                updatedState.connections,
+                updatedState.history
+              )[updatedState.history.length]);
+              
+              showToast('Связь добавлена', 'success');
+              renderFlowchart();
+            } else {
+              // Если соединение не создалось (например, уже существует), очищаем режим
+              flowchartStore.setConnectingFrom(null, null);
+              renderFlowchart();
             }
           } else {
             // Начинаем соединение
             flowchartStore.setConnectingFrom(nodeId, port);
-            showToast('Выберите точку подключения на другом блоке', 'success');
+            showToast('Выберите точку подключения на другом блоке', 'info');
+            renderFlowchart();
           }
-          renderFlowchart();
         },
         onRenderControls: (node, container) => {
           renderNodeControls(node, container, {
@@ -242,6 +280,97 @@ function FlowchartEditorRefactored() {
     const infoEmpty = document.getElementById('info-empty');
     const infoPanel = document.getElementById('info-panel');
     renderInfoPanel(selectedNode || null, infoEmpty, infoPanel);
+
+    // Добавляем обработчики для полей ввода после рендеринга панели
+    // Это нужно, потому что поля могут пересоздаваться при ререндере
+    const textInputAfterRender = document.getElementById('node-text-input') as HTMLTextAreaElement | null;
+    const codeInputAfterRender = document.getElementById('node-code-input') as HTMLTextAreaElement | null;
+
+    if (textInputAfterRender && selectedNode) {
+      // Удаляем старый обработчик, если есть
+      const oldHandler = (textInputAfterRender as any)._blurHandler;
+      if (oldHandler) {
+        textInputAfterRender.removeEventListener('blur', oldHandler);
+      }
+      
+      // Создаем новый обработчик
+      const handleTextInputBlur = () => {
+        if (!selectedNode.id) return;
+        
+        // Сохраняем текущее состояние для истории
+        const currentState = flowchartStore.store.getState();
+        const oldText = selectedNode.text;
+        const newText = textInputAfterRender.value;
+        
+        // Обновляем только если текст действительно изменился
+        if (oldText !== newText) {
+          flowchartStore.updateNode(selectedNode.id, { text: newText });
+          
+          // Добавляем в историю после обновления
+          const updatedState = flowchartStore.store.getState();
+          flowchartStore.addHistoryEntry(addHistoryEntry(
+            `Изменен текст блока: "${oldText}" → "${newText}"`,
+            updatedState.nodes,
+            updatedState.connections,
+            updatedState.history
+          )[updatedState.history.length]);
+          
+          // Явно вызываем ререндер после изменения текста
+          setTimeout(() => {
+            if (renderFlowchartFnRef.current) {
+              renderFlowchartFnRef.current();
+            }
+          }, 0);
+        }
+      };
+      
+      // Сохраняем ссылку для последующего удаления
+      (textInputAfterRender as any)._blurHandler = handleTextInputBlur;
+      textInputAfterRender.addEventListener('blur', handleTextInputBlur);
+    }
+
+    if (codeInputAfterRender && selectedNode && !codeInputAfterRender.readOnly) {
+      // Удаляем старый обработчик, если есть
+      const oldHandler = (codeInputAfterRender as any)._blurHandler;
+      if (oldHandler) {
+        codeInputAfterRender.removeEventListener('blur', oldHandler);
+      }
+      
+      // Создаем новый обработчик
+      const handleCodeInputBlur = () => {
+        if (!selectedNode.id) return;
+        
+        // Сохраняем текущее состояние для истории
+        const currentState = flowchartStore.store.getState();
+        const oldCodeRef = selectedNode.codeReference;
+        const newCodeRef = codeInputAfterRender.value;
+        
+        // Обновляем только если код действительно изменился
+        if (oldCodeRef !== newCodeRef) {
+          flowchartStore.updateNode(selectedNode.id, { codeReference: newCodeRef });
+          
+          // Добавляем в историю после обновления
+          const updatedState = flowchartStore.store.getState();
+          flowchartStore.addHistoryEntry(addHistoryEntry(
+            `Изменен фрагмент кода блока "${selectedNode.text}"`,
+            updatedState.nodes,
+            updatedState.connections,
+            updatedState.history
+          )[updatedState.history.length]);
+          
+          // Явно вызываем ререндер после изменения кода
+          setTimeout(() => {
+            if (renderFlowchartFnRef.current) {
+              renderFlowchartFnRef.current();
+            }
+          }, 0);
+        }
+      };
+      
+      // Сохраняем ссылку для последующего удаления
+      (codeInputAfterRender as any)._blurHandler = handleCodeInputBlur;
+      codeInputAfterRender.addEventListener('blur', handleCodeInputBlur);
+    }
 
     const commentsEmpty = document.getElementById('comments-empty');
     const commentsPanel = document.getElementById('comments-panel');
@@ -301,6 +430,66 @@ function FlowchartEditorRefactored() {
     // Отслеживаем изменения для корректного отображения контролов
   ]);
 
+  // Горячие клавиши для undo/redo (отдельный useEffect на уровне компонента)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (flowchartStore.canUndo()) {
+          flowchartStore.undo();
+          showToast('Изменение отменено');
+          // Явно вызываем ререндер после undo
+          setTimeout(() => {
+            if (renderFlowchartFnRef.current) {
+              renderFlowchartFnRef.current();
+            }
+          }, 0);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        if (flowchartStore.canRedo()) {
+          flowchartStore.redo();
+          showToast('Изменение повторено');
+          // Явно вызываем ререндер после redo
+          setTimeout(() => {
+            if (renderFlowchartFnRef.current) {
+              renderFlowchartFnRef.current();
+            }
+          }, 0);
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [flowchartStore]);
+
+  // Zoom колесиком мыши (как в script.js) - отдельный useEffect на уровне компонента
+  useEffect(() => {
+    const wrapper = canvasWrapperRef.current;
+    if (!wrapper) return;
+    
+    const handleWheel = (e: WheelEvent) => {
+      // Проверяем, что зажат Ctrl или Cmd (для zoom)
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        const newZoom = Math.max(0.1, Math.min(2, flowchartStore.zoom + delta));
+        flowchartStore.setZoom(newZoom);
+        const zoomValueEl = document.getElementById('zoom-value');
+        if (zoomValueEl) zoomValueEl.textContent = Math.round(newZoom * 100).toString();
+      }
+    };
+    
+    wrapper.addEventListener('wheel', handleWheel, { passive: false });
+    return () => wrapper.removeEventListener('wheel', handleWheel);
+  }, [flowchartStore, zoom]);
+
+  // Сохраняем renderFlowchart в ref для доступа из обработчиков
+  useEffect(() => {
+    renderFlowchartFnRef.current = renderFlowchart;
+  }, [renderFlowchart]);
+
   // Обновляем рендеринг при изменении состояния
   useEffect(() => {
     console.log('[EFFECT] renderFlowchart effect triggered');
@@ -346,8 +535,24 @@ function FlowchartEditorRefactored() {
       // Сохраняем позицию в ref вместо setState, чтобы избежать re-render
       draggedNodePositionRef.current = newPos;
       
-      // Рендеринг узлов не нужен - мы используем прямую DOM-манипуляцию
-      // Соединения обновим только при mouseUp
+      // Обновляем соединения во время перетаскивания для плавного ререндеринга
+      // Используем requestAnimationFrame для оптимизации
+      requestAnimationFrame(() => {
+        renderConnections(
+          currentNodes,
+          flowchartStore.store.getState().connections,
+          connectionsCanvasRef.current!,
+          connectionsSvgRef.current!,
+          wrapper,
+          {
+            zoom: currentZoom,
+            selectedConnectionId: flowchartStore.selectedConnectionId,
+            onConnectionClick: (connectionId) => {
+              flowchartStore.selectConnection(connectionId);
+            }
+          }
+        );
+      });
     }
 
     // Отслеживаем позицию мыши для временной линии соединения
@@ -377,10 +582,29 @@ function FlowchartEditorRefactored() {
     if (draggedNodeState) {
       // Сохраняем финальную позицию в React state только при отпускании мыши
       if (draggedNodePositionRef.current) {
-        flowchartStore.updateNode(draggedNodeState.nodeId, {
-          x: draggedNodePositionRef.current.x,
-          y: draggedNodePositionRef.current.y
-        });
+        const node = flowchartStore.nodes.find(n => n.id === draggedNodeState.nodeId);
+        const oldX = node?.x || 0;
+        const oldY = node?.y || 0;
+        const newX = draggedNodePositionRef.current.x;
+        const newY = draggedNodePositionRef.current.y;
+        
+        // Обновляем только если позиция действительно изменилась
+        if (oldX !== newX || oldY !== newY) {
+          flowchartStore.updateNode(draggedNodeState.nodeId, {
+            x: newX,
+            y: newY
+          });
+          
+          // Добавляем в историю после обновления
+          const updatedState = flowchartStore.store.getState();
+          flowchartStore.addHistoryEntry(addHistoryEntry(
+            `Перемещен блок "${node?.text || draggedNodeState.nodeId}"`,
+            updatedState.nodes,
+            updatedState.connections,
+            updatedState.history
+          )[updatedState.history.length]);
+        }
+        
         draggedNodePositionRef.current = null;
       }
       
@@ -504,33 +728,116 @@ function FlowchartEditorRefactored() {
 
   // Инициализация обработчиков кнопок
   useEffect(() => {
+    // Создаем обработчики один раз и сохраняем ссылки для cleanup
+    const toolBtnHandlers: Map<HTMLElement, () => void> = new Map();
+    
     // Кнопки добавления узлов
     document.querySelectorAll('.tool-btn').forEach(btn => {
       const type = (btn as HTMLElement).dataset.type;
       if (type) {
-        btn.addEventListener('click', () => handleAddNode(type as NodeType));
+        const handler = () => handleAddNode(type as NodeType);
+        toolBtnHandlers.set(btn as HTMLElement, handler);
+        btn.addEventListener('click', handler);
       }
     });
+
+    // Обработчики для undo/redo
+    const handleUndo = () => {
+      const success = flowchartStore.undo();
+      if (success) {
+        showToast('Изменение отменено');
+        const zoomValueEl = document.getElementById('zoom-value');
+        if (zoomValueEl) zoomValueEl.textContent = Math.round(flowchartStore.zoom * 100).toString();
+        
+        // Восстанавливаем JSON из блок-схемы
+        const restoredJSON = flowchartStore.getRestoredJSON();
+        if (restoredJSON) {
+          console.log('[UNDO] Восстановленный JSON:', restoredJSON);
+          // TODO: Можно обновить sourceCode или показать восстановленный JSON
+        }
+        
+        // Явно вызываем ререндер после undo
+        setTimeout(() => {
+          if (renderFlowchartFnRef.current) {
+            renderFlowchartFnRef.current();
+          }
+        }, 0);
+      } else {
+        showToast('Нечего отменять', 'warning');
+      }
+    };
+
+    const handleRedo = () => {
+      const success = flowchartStore.redo();
+      if (success) {
+        showToast('Изменение повторено');
+        const zoomValueEl = document.getElementById('zoom-value');
+        if (zoomValueEl) zoomValueEl.textContent = Math.round(flowchartStore.zoom * 100).toString();
+        
+        // Восстанавливаем JSON из блок-схемы
+        const restoredJSON = flowchartStore.getRestoredJSON();
+        if (restoredJSON) {
+          console.log('[REDO] Восстановленный JSON:', restoredJSON);
+          // TODO: Можно обновить sourceCode или показать восстановленный JSON
+        }
+        
+        // Явно вызываем ререндер после redo
+        setTimeout(() => {
+          if (renderFlowchartFnRef.current) {
+            renderFlowchartFnRef.current();
+          }
+        }, 0);
+      } else {
+        showToast('Нечего повторять', 'warning');
+      }
+    };
+
+    // Кнопки undo/redo
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+    
+    if (undoBtn) {
+      undoBtn.addEventListener('click', handleUndo);
+    }
+    
+    if (redoBtn) {
+      redoBtn.addEventListener('click', handleRedo);
+    }
+
+    // Обработчики для zoom
+    const handleZoomIn = () => {
+      flowchartStore.setZoom(zoomIn(flowchartStore.zoom));
+      const zoomValue = document.getElementById('zoom-value');
+      if (zoomValue) zoomValue.textContent = Math.round(flowchartStore.zoom * 100).toString();
+    };
+
+    const handleZoomOut = () => {
+      flowchartStore.setZoom(zoomOut(flowchartStore.zoom));
+      const zoomValue = document.getElementById('zoom-value');
+      if (zoomValue) zoomValue.textContent = Math.round(flowchartStore.zoom * 100).toString();
+    };
+
+    const handleZoomReset = () => {
+      flowchartStore.setZoom(1);
+      const zoomValue = document.getElementById('zoom-value');
+      if (zoomValue) zoomValue.textContent = '100';
+    };
 
     // Кнопки зума
     const zoomInBtn = document.getElementById('zoom-in');
     const zoomOutBtn = document.getElementById('zoom-out');
-    const zoomValue = document.getElementById('zoom-value');
+    const zoomResetBtn = document.getElementById('zoom-reset');
 
     if (zoomInBtn) {
-      zoomInBtn.addEventListener('click', () => {
-        flowchartStore.setZoom(zoomIn(flowchartStore.zoom));
-        if (zoomValue) zoomValue.textContent = Math.round(flowchartStore.zoom * 100).toString();
-        // renderFlowchart() вызовется автоматически через useEffect при изменении zoom
-      });
+      zoomInBtn.addEventListener('click', handleZoomIn);
     }
 
     if (zoomOutBtn) {
-      zoomOutBtn.addEventListener('click', () => {
-        flowchartStore.setZoom(zoomOut(flowchartStore.zoom));
-        if (zoomValue) zoomValue.textContent = Math.round(flowchartStore.zoom * 100).toString();
-        // renderFlowchart() вызовется автоматически через useEffect при изменении zoom
-      });
+      zoomOutBtn.addEventListener('click', handleZoomOut);
+    }
+    
+    if (zoomResetBtn) {
+      zoomResetBtn.addEventListener('click', handleZoomReset);
     }
 
     // Кнопка генерации блок-схемы
@@ -539,66 +846,135 @@ function FlowchartEditorRefactored() {
       generateBtn.addEventListener('click', handleGenerateFlowchart);
     }
 
-    // Кнопка сохранения узла
+    // Обработчики для полей ввода узла (автоматическое сохранение при потере фокуса)
+    const handleTextInputChange = () => {
+      if (!flowchartStore.selectedNodeId) return;
+      const textInput = document.getElementById('node-text-input') as HTMLTextAreaElement | null;
+      if (textInput) {
+        flowchartStore.updateNode(flowchartStore.selectedNodeId, { text: textInput.value });
+        // renderFlowchart() вызовется автоматически через useEffect при изменении nodes
+      }
+    };
+
+    const handleCodeInputChange = () => {
+      if (!flowchartStore.selectedNodeId) return;
+      const codeInput = document.getElementById('node-code-input') as HTMLTextAreaElement | null;
+      if (codeInput && !codeInput.readOnly) { // Не обновляем, если поле только для чтения (для функций)
+        flowchartStore.updateNode(flowchartStore.selectedNodeId, { codeReference: codeInput.value });
+        // renderFlowchart() вызовется автоматически через useEffect при изменении nodes
+      }
+    };
+
+    // Добавляем обработчики для автоматического сохранения при потере фокуса
+    const textInput = document.getElementById('node-text-input') as HTMLTextAreaElement | null;
+    const codeInput = document.getElementById('node-code-input') as HTMLTextAreaElement | null;
+
+    if (textInput) {
+      textInput.addEventListener('blur', handleTextInputChange);
+      // Также можно обновлять при вводе с debounce, но для простоты используем blur
+    }
+
+    if (codeInput) {
+      codeInput.addEventListener('blur', handleCodeInputChange);
+    }
+
+    // Кнопка сохранения узла (для явного сохранения, если нужно)
+    const handleSaveNode = () => {
+      if (!flowchartStore.selectedNodeId) return;
+
+      const textInputEl = document.getElementById('node-text-input') as HTMLTextAreaElement | null;
+      const codeInputEl = document.getElementById('node-code-input') as HTMLTextAreaElement | null;
+
+      if (textInputEl) {
+        flowchartStore.updateNode(flowchartStore.selectedNodeId, { text: textInputEl.value });
+      }
+      if (codeInputEl && !codeInputEl.readOnly) {
+        flowchartStore.updateNode(flowchartStore.selectedNodeId, { codeReference: codeInputEl.value });
+      }
+
+      showToast('Изменения сохранены');
+      // Явно вызываем ререндер после сохранения
+      setTimeout(() => {
+        if (renderFlowchartFnRef.current) {
+          renderFlowchartFnRef.current();
+        }
+      }, 0);
+    };
+
     const saveNodeBtn = document.getElementById('save-node-btn');
     if (saveNodeBtn) {
-      saveNodeBtn.addEventListener('click', () => {
-        if (!flowchartStore.selectedNodeId) return;
-
-        const textInput = document.getElementById('node-text-input') as HTMLTextAreaElement | null;
-        const codeInput = document.getElementById('node-code-input') as HTMLTextAreaElement | null;
-
-        if (textInput) {
-          flowchartStore.updateNode(flowchartStore.selectedNodeId, { text: textInput.value });
-        }
-        if (codeInput) {
-          flowchartStore.updateNode(flowchartStore.selectedNodeId, { codeReference: codeInput.value });
-        }
-
-        showToast('Изменения сохранены');
-        // renderFlowchart() вызовется автоматически через useEffect при изменении nodes
-      });
+      saveNodeBtn.addEventListener('click', handleSaveNode);
     }
 
     // Экспорт
+    const handleExportSvg = () => {
+      try {
+        const svgContent = exportToSVG(
+          canvasWrapperRef.current!,
+          flowchartStore.nodes,
+          flowchartStore.connections
+        );
+        downloadSVG(svgContent, 'flowchart.svg');
+        showToast('Экспорт SVG выполнен');
+      } catch (error) {
+        showToast('Ошибка экспорта SVG', 'error');
+        console.error('Export SVG error:', error);
+      }
+    };
+
+    const handleExportPng = async () => {
+      try {
+        const dataUrl = await exportToPNG(
+          canvasWrapperRef.current!,
+          flowchartStore.nodes,
+          flowchartStore.connections,
+          flowchartStore.zoom
+        );
+        downloadPNG(dataUrl, 'flowchart.png');
+        showToast('Экспорт PNG выполнен');
+      } catch (error) {
+        showToast('Ошибка экспорта PNG', 'error');
+        console.error('Export PNG error:', error);
+      }
+    };
+
     const exportSvgBtn = document.getElementById('export-svg');
     const exportPngBtn = document.getElementById('export-png');
     
     if (exportSvgBtn) {
-      exportSvgBtn.addEventListener('click', () => {
-        try {
-          const svgContent = exportToSVG(
-            canvasWrapperRef.current!,
-            flowchartStore.nodes,
-            flowchartStore.connections
-          );
-          downloadSVG(svgContent, 'flowchart.svg');
-          showToast('Экспорт SVG выполнен');
-        } catch (error) {
-          showToast('Ошибка экспорта SVG', 'error');
-          console.error('Export SVG error:', error);
-        }
-      });
+      exportSvgBtn.addEventListener('click', handleExportSvg);
     }
     
     if (exportPngBtn) {
-      exportPngBtn.addEventListener('click', async () => {
-        try {
-          const dataUrl = await exportToPNG(
-            canvasWrapperRef.current!,
-            flowchartStore.nodes,
-            flowchartStore.connections,
-            flowchartStore.zoom
-          );
-          downloadPNG(dataUrl, 'flowchart.png');
-          showToast('Экспорт PNG выполнен');
-        } catch (error) {
-          showToast('Ошибка экспорта PNG', 'error');
-          console.error('Export PNG error:', error);
-        }
-      });
+      exportPngBtn.addEventListener('click', handleExportPng);
     }
 
+    // Cleanup функция для удаления всех обработчиков
+    return () => {
+      // Удаляем обработчики с кнопок добавления узлов
+      toolBtnHandlers.forEach((handler, btn) => {
+        btn.removeEventListener('click', handler);
+      });
+      
+      // Удаляем остальные обработчики
+      if (undoBtn) undoBtn.removeEventListener('click', handleUndo);
+      if (redoBtn) redoBtn.removeEventListener('click', handleRedo);
+      if (zoomInBtn) zoomInBtn.removeEventListener('click', handleZoomIn);
+      if (zoomOutBtn) zoomOutBtn.removeEventListener('click', handleZoomOut);
+      if (zoomResetBtn) zoomResetBtn.removeEventListener('click', handleZoomReset);
+      if (generateBtn) generateBtn.removeEventListener('click', handleGenerateFlowchart);
+      if (saveNodeBtn) saveNodeBtn.removeEventListener('click', handleSaveNode);
+      if (exportSvgBtn) exportSvgBtn.removeEventListener('click', handleExportSvg);
+      if (exportPngBtn) exportPngBtn.removeEventListener('click', handleExportPng);
+      
+      // Удаляем обработчики полей ввода
+      if (textInput) textInput.removeEventListener('blur', handleTextInputChange);
+      if (codeInput) codeInput.removeEventListener('blur', handleCodeInputChange);
+    };
+  }, [handleAddNode, flowchartStore, handleGenerateFlowchart]);
+
+  // Инициализация обработчиков для загрузки примера, файла, комментариев и т.д.
+  useEffect(() => {
     // Загрузка примера
     const loadExampleBtn = document.getElementById('load-example-btn');
     if (loadExampleBtn) {
@@ -712,13 +1088,71 @@ function FlowchartEditorRefactored() {
         wrapper.removeEventListener('click', handleCanvasClick);
       }
     };
-  }, [flowchartStore, handleAddNode, handleGenerateFlowchart, renderFlowchart]);
+  }, [flowchartStore]);
 
   // Инициализация темы
   useEffect(() => {
     const initialIsDark = initTheme();
     setIsDark(initialIsDark);
   }, []);
+
+  // Обработчик для кнопки "Экспорт в код"
+  useEffect(() => {
+    const exportCodeBtn = document.getElementById('export-code-btn');
+    const exportCodeEditor = document.getElementById('export-code-editor') as HTMLTextAreaElement | null;
+
+    const handleExportCode = async () => {
+      if (!exportCodeEditor) return;
+
+      try {
+        // Показываем индикатор загрузки
+        exportCodeBtn?.setAttribute('disabled', 'true');
+        exportCodeEditor.value = 'Генерация кода...';
+        exportCodeEditor.style.color = 'var(--text-secondary)';
+
+        // Восстанавливаем JSON из блок-схемы
+        const restoredJSON = flowchartStore.getRestoredJSON();
+        if (!restoredJSON) {
+          throw new Error('Не удалось восстановить JSON из блок-схемы. Убедитесь, что блок-схема была создана из кода.');
+        }
+
+        // Определяем язык из metadata первого узла
+        const language = flowchartStore.nodes.find(n => n.metadata?.language)?.metadata?.language || 'pascal';
+        
+        console.log('[EXPORT] Восстановленный JSON:', restoredJSON);
+        console.log('[EXPORT] Язык:', language);
+
+        // Вызываем API для генерации кода
+        const result = await api.generateCode(restoredJSON, language);
+        
+        if (result.success && result.code) {
+          exportCodeEditor.value = result.code;
+          exportCodeEditor.style.color = 'var(--text-primary)';
+          showToast('Код успешно сгенерирован', 'success');
+        } else {
+          throw new Error(result.error || 'Не удалось сгенерировать код');
+        }
+      } catch (error) {
+        console.error('[EXPORT] Ошибка генерации кода:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+        exportCodeEditor.value = `Ошибка: ${errorMessage}`;
+        exportCodeEditor.style.color = 'var(--error, #ef4444)';
+        showToast('Ошибка генерации кода', 'error');
+      } finally {
+        exportCodeBtn?.removeAttribute('disabled');
+      }
+    };
+
+    if (exportCodeBtn) {
+      exportCodeBtn.addEventListener('click', handleExportCode);
+    }
+
+    return () => {
+      if (exportCodeBtn) {
+        exportCodeBtn.removeEventListener('click', handleExportCode);
+      }
+    };
+  }, [flowchartStore]);
 
 
   // Рендерим временную линию соединения
@@ -781,6 +1215,22 @@ function FlowchartEditorRefactored() {
         </div>
 
         <div className="toolbar-section">
+          <h3>История</h3>
+          <button className="control-btn" id="undo-btn" title="Undo (Ctrl+Z)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 7v6h6M21 17a10 10 0 0 0-10-10 8 8 0 0 0-8 8 8 8 0 0 0 8 8c4.478 0 8.22-2.736 9.65-6.6"></path>
+            </svg>
+            Undo
+          </button>
+          <button className="control-btn" id="redo-btn" title="Redo (Ctrl+Y)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 7v6h-6M3 17a10 10 0 0 1 10-10 8 8 0 0 1 8 8 8 8 0 0 1-8 8c-4.478 0-8.22-2.736-9.65-6.6"></path>
+            </svg>
+            Redo
+          </button>
+        </div>
+
+        <div className="toolbar-section">
           <h3>Управление</h3>
           <button className="control-btn" id="zoom-in">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -795,6 +1245,12 @@ function FlowchartEditorRefactored() {
               <path d="m21 21-4.35-4.35M8 11h6"></path>
             </svg>
             Уменьшить
+          </button>
+          <button className="control-btn" id="zoom-reset">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16M21 12H3"></path>
+            </svg>
+            Сброс
           </button>
           <button className="control-btn" id="export-svg">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -879,6 +1335,13 @@ function FlowchartEditorRefactored() {
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
               <path d="M3 3v5h5M12 7v5l4 2"></path>
             </svg>
+            История
+          </button>
+          <button className="tab-btn" data-tab="export">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"></path>
+            </svg>
+            Экспорт в код
           </button>
         </div>
 
@@ -1013,6 +1476,27 @@ function FlowchartEditorRefactored() {
               <li>Нажмите на кнопку восстановления для возврата к версии</li>
             </ul>
           </div>
+        </div>
+        
+        <div className="tab-content" id="tab-export">
+          <h3>Экспорт в код</h3>
+          <p className="tab-description">Восстановите исходный код из текущей блок-схемы</p>
+          <div className="form-group">
+            <label htmlFor="export-code-editor">Сгенерированный код:</label>
+            <textarea 
+              id="export-code-editor" 
+              rows={15} 
+              placeholder="Нажмите 'Экспорт в код' для генерации..."
+              readOnly
+              style={{ fontFamily: 'Courier New, monospace', fontSize: '0.8125rem' }}
+            ></textarea>
+          </div>
+          <button className="primary-btn" id="export-code-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"></path>
+            </svg>
+            Экспорт в код
+          </button>
         </div>
       </aside>
       

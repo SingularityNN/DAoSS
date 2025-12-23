@@ -13,6 +13,11 @@ export interface FlowchartNode {
     text: string;
     codeReference: string;
     comments: Comment[];
+    metadata?: {
+        astElement?: any; // Оригинальный AST/SPR элемент для C/C++/Pascal
+        language?: 'pascal' | 'c' | 'cpp'; // Язык исходного кода
+        nodeType?: string; // Тип узла в AST/SPR (например, 'IfStmt', 'WhileStmt', 'VarDeclStmt')
+    };
 }
 
 export interface Connection {
@@ -47,6 +52,7 @@ export interface FlowchartState {
     connectingFrom: string | null;
     connectingFromPort: PortType | null;
     history: HistoryEntry[];
+    historyIndex: number; // Индекс текущей позиции в истории для undo/redo
     zoom: number;
     sourceCode: string;
     draggedNode: string | null;

@@ -40,15 +40,27 @@ export function createConnection(
 ): Connection | null {
     // Нельзя соединять узел сам с собой
     if (fromNodeId === toNodeId) {
+        showToast('Нельзя соединять узел сам с собой', 'warning');
         return null;
     }
+    
+    // Если порт назначения не указан, определяем лучший
+    const finalToPort = toPort || (() => {
+        const fromNode = nodes.find(n => n.id === fromNodeId);
+        const toNode = nodes.find(n => n.id === toNodeId);
+        
+        if (fromNode && toNode) {
+            return determineBestPort(fromNode, fromPort, toNode);
+        }
+        return 'top' as PortType;
+    })();
     
     // Проверяем, не существует ли уже такое соединение
     const existing = connections.find(
         c => c.from === fromNodeId && 
              c.to === toNodeId && 
              c.fromPort === fromPort &&
-             c.toPort === toPort
+             c.toPort === finalToPort
     );
     
     if (existing) {
@@ -56,16 +68,17 @@ export function createConnection(
         return null;
     }
     
-    // Если порт назначения не указан, определяем лучший
-    if (!toPort) {
-        const fromNode = nodes.find(n => n.id === fromNodeId);
-        const toNode = nodes.find(n => n.id === toNodeId);
-        
-        if (fromNode && toNode) {
-            toPort = determineBestPort(fromNode, fromPort, toNode);
-        } else {
-            toPort = 'top';
-        }
+    // Проверяем обратное соединение (может быть уже соединение в обратную сторону)
+    const reverseExisting = connections.find(
+        c => c.from === toNodeId && 
+             c.to === fromNodeId && 
+             c.fromPort === finalToPort &&
+             c.toPort === fromPort
+    );
+    
+    if (reverseExisting) {
+        showToast('Обратное соединение уже существует', 'warning');
+        return null;
     }
     
     return {
@@ -73,7 +86,7 @@ export function createConnection(
         from: fromNodeId,
         to: toNodeId,
         fromPort,
-        toPort
+        toPort: finalToPort
     };
 }
 

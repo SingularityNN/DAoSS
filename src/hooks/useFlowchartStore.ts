@@ -46,7 +46,12 @@ export function useFlowchartStore() {
         clearSelection: useCallback(() => store.clearSelection(), [store]),
         // История
         history: state.history,
+        historyIndex: state.historyIndex,
         addHistoryEntry: useCallback((entry: HistoryEntry) => store.addHistoryEntry(entry), [store]),
+        undo: useCallback(() => store.undo(), [store]),
+        redo: useCallback(() => store.redo(), [store]),
+        canUndo: useCallback(() => store.canUndo(), [store]),
+        canRedo: useCallback(() => store.canRedo(), [store]),
         // Зум
         zoom: state.zoom,
         setZoom: useCallback((zoom: number) => store.setZoom(zoom), [store]),
@@ -63,6 +68,8 @@ export function useFlowchartStore() {
         connectingFromPort: state.connectingFromPort,
         setConnectingFrom: useCallback((nodeId: string | null, port?: 'top' | 'right' | 'bottom' | 'left' | null) => 
             store.setConnectingFrom(nodeId, port), [store]),
+        // Восстановление JSON
+        getRestoredJSON: useCallback(() => store.getRestoredJSON(), [store]),
     };
 }
 

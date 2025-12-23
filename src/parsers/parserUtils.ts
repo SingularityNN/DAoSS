@@ -7,7 +7,12 @@ export interface NodeCreator {
      text: string, 
      codeRef?: string, 
      width?: number | null, 
-     height?: number | null): FlowchartNode;
+     height?: number | null,
+     metadata?: {
+         astElement?: any;
+         language?: 'pascal' | 'c' | 'cpp';
+         nodeType?: string;
+     }): FlowchartNode;
 }
 
 export interface ConnectionCreator {
@@ -33,7 +38,13 @@ export function createParserFactories(
         text: string,
         codeRef = '',
         width: number | null = null,
-        height: number | null = null
+        height: number | null = null,
+        functionBody?: string,
+        metadata?: {
+            astElement?: any;
+            language?: 'pascal' | 'c' | 'cpp';
+            nodeType?: string;
+        }
     ): FlowchartNode {
         const nodeId = getNextNodeId();
         const node: FlowchartNode = {
@@ -44,8 +55,9 @@ export function createParserFactories(
             width: width || (type === 'decision' ? 180 : type === 'start' || type === 'end' ? 120 : 180),
             height: height || (type === 'decision' ? 100 : type === 'start' || type === 'end' ? 60 : 80),
             text: text,
-            codeReference: codeRef,
-            comments: []
+            codeReference: functionBody || codeRef, // Для функций используем тело функции, иначе codeRef
+            comments: [],
+            metadata: metadata || undefined
         };
         nodes.push(node);
         

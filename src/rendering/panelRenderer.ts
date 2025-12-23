@@ -41,7 +41,24 @@ export function renderInfoPanel(
     if (textInput) textInput.value = node.text || '';
     if (xInput) xInput.value = Math.round(node.x || 0).toString();
     if (yInput) yInput.value = Math.round(node.y || 0).toString();
-    if (codeInput) codeInput.value = node.codeReference || '';
+    
+    // Для функций показываем тело функции, для остальных - codeReference
+    const isFunction = (node as any).isFunction === true;
+    if (codeInput) {
+        if (isFunction && node.codeReference) {
+            // Для функций показываем полное тело функции
+            codeInput.value = node.codeReference;
+            codeInput.rows = Math.max(10, node.codeReference.split('\n').length + 2);
+            codeInput.readOnly = true; // Тело функции только для чтения
+            codeInput.placeholder = 'Тело функции (только для чтения)';
+        } else {
+            // Для остальных нод показываем codeReference как обычно
+            codeInput.value = node.codeReference || '';
+            codeInput.rows = 4;
+            codeInput.readOnly = false;
+            codeInput.placeholder = 'Связанный фрагмент кода...';
+        }
+    }
 }
 
 /**

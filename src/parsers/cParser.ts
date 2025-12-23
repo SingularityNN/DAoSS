@@ -44,6 +44,30 @@ function calculateNodeSize(text: string, nodeType: string): { width: number; hei
 }
 
 /**
+ * Преобразует AST блок в строку (для тела функции)
+ */
+function convertASTBlockToString(block: ASTBlock): string {
+    if (!block || typeof block !== 'object' || block.type !== 'Block') {
+        return '';
+    }
+    
+    const statements = block.statements || [];
+    if (!Array.isArray(statements)) {
+        return '';
+    }
+    
+    return statements
+        .map(stmt => {
+            if (!stmt || typeof stmt !== 'object') return '';
+            const stmtText = convertASTStatementToString(stmt);
+            // Добавляем отступ для вложенных блоков
+            return stmtText.split('\n').map(line => '  ' + line).join('\n');
+        })
+        .filter(text => text.length > 0)
+        .join('\n');
+}
+
+/**
  * Преобразует AST statement в строку (для for init и других случаев)
  */
 function convertASTStatementToString(stmt: ASTStatement | null | undefined): string {
@@ -56,14 +80,59 @@ function convertASTStatementToString(stmt: ASTStatement | null | undefined): str
         if (stmt.initializer) {
             text += ` = ${convertExprToString(stmt.initializer)}`;
         }
-        return text;
+        return text + ';';
     } else if (stmt.type === 'AssignStmt') {
         const target = stmt.target || '';
         const operator = convertOperatorToSymbol(stmt.operator || '=');
         const value = convertExprToString(stmt.value);
-        return `${target} ${operator} ${value}`;
+        return `${target} ${operator} ${value};`;
     } else if (stmt.type === 'ExprStmt' && stmt.expression) {
-        return convertExprToString(stmt.expression);
+        return convertExprToString(stmt.expression) + ';';
+    } else if (stmt.type === 'ReturnStmt') {
+        const valueText = stmt.value ? convertExprToString(stmt.value) : '';
+        return valueText ? `return ${valueText};` : 'return;';
+    } else if (stmt.type === 'IfStmt') {
+        const conditionText = convertExprToString(stmt.condition);
+        let text = `if(${conditionText}) {\n`;
+        if (stmt.thenBranch && typeof stmt.thenBranch === 'object' && stmt.thenBranch.type === 'Block') {
+            text += convertASTBlockToString(stmt.thenBranch);
+        }
+        text += '}';
+        if (stmt.elseBranch) {
+            text += ' else {\n';
+            if (typeof stmt.elseBranch === 'object' && stmt.elseBranch.type === 'Block') {
+                text += convertASTBlockToString(stmt.elseBranch);
+            }
+            text += '}';
+        }
+        return text;
+    } else if (stmt.type === 'WhileStmt') {
+        const conditionText = convertExprToString(stmt.condition);
+        let text = `while(${conditionText}) {\n`;
+        if (stmt.body && typeof stmt.body === 'object' && stmt.body.type === 'Block') {
+            text += convertASTBlockToString(stmt.body);
+        }
+        text += '}';
+        return text;
+    } else if (stmt.type === 'ForStmt') {
+        let text = 'for(';
+        if (stmt.init) {
+            text += convertASTStatementToString(stmt.init);
+        }
+        text += '; ';
+        if (stmt.condition) {
+            text += convertExprToString(stmt.condition);
+        }
+        text += '; ';
+        if (stmt.increment) {
+            text += convertExprToString(stmt.increment);
+        }
+        text += ') {\n';
+        if (stmt.body && typeof stmt.body === 'object' && stmt.body.type === 'Block') {
+            text += convertASTBlockToString(stmt.body);
+        }
+        text += '}';
+        return text;
     }
     
     return '';
@@ -181,7 +250,11 @@ function processASTStatement(
         text += ';';
         
         const size = calculateNodeSize(text, 'process');
-        currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height);
+        currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         // Соединяем с предыдущими
         previousExitNodes.forEach(prevExit => {
@@ -217,7 +290,11 @@ function processASTStatement(
         }
         
         const size = calculateNodeSize(text, 'process');
-        currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height);
+        currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         previousExitNodes.forEach(prevExit => {
             const normalized = normalizeExitNode(prevExit);
@@ -235,7 +312,11 @@ function processASTStatement(
         const conditionText = convertExprToString(stmt.condition);
         const displayText = `if(${conditionText})`;
         const size = calculateNodeSize(displayText, 'decision');
-        currentNode = createNode('decision', truncateText(displayText, 50), displayText, size.width, size.height);
+        currentNode = createNode('decision', truncateText(displayText, 50), displayText, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         // Соединяем условие с предыдущими
         previousExitNodes.forEach(prevExit => {
@@ -288,7 +369,11 @@ function processASTStatement(
         const conditionText = convertExprToString(stmt.condition);
         const displayText = `while(${conditionText})`;
         const size = calculateNodeSize(displayText, 'decision');
-        currentNode = createNode('decision', truncateText(displayText, 50), displayText, size.width, size.height);
+        currentNode = createNode('decision', truncateText(displayText, 50), displayText, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         previousExitNodes.forEach(prevExit => {
             const normalized = normalizeExitNode(prevExit);
@@ -340,7 +425,11 @@ function processASTStatement(
         conditionText += ')';
         
         const size = calculateNodeSize(conditionText, 'decision');
-        currentNode = createNode('decision', truncateText(conditionText, 50), conditionText, size.width, size.height);
+        currentNode = createNode('decision', truncateText(conditionText, 50), conditionText, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         previousExitNodes.forEach(prevExit => {
             const normalized = normalizeExitNode(prevExit);
@@ -401,7 +490,11 @@ function processASTStatement(
         const conditionText = convertExprToString(stmt.condition);
         const displayText = `do-while(${conditionText})`;
         const size = calculateNodeSize(displayText, 'decision');
-        currentNode = createNode('decision', truncateText(displayText, 50), displayText, size.width, size.height);
+        currentNode = createNode('decision', truncateText(displayText, 50), displayText, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         if (bodyNodes.length > 0) {
             // Соединяем последнюю ноду тела с условием
@@ -444,7 +537,11 @@ function processASTStatement(
         const conditionText = convertExprToString(stmt.condition);
         const displayText = `switch(${conditionText})`;
         const size = calculateNodeSize(displayText, 'decision');
-        currentNode = createNode('decision', truncateText(displayText, 50), displayText, size.width, size.height);
+        currentNode = createNode('decision', truncateText(displayText, 50), displayText, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         previousExitNodes.forEach(prevExit => {
             const normalized = normalizeExitNode(prevExit);
@@ -507,7 +604,25 @@ function processASTStatement(
         // Пока просто делаем её обычным process, но с увеличенным размером
         const isMain = funcName === 'main';
         const size = calculateNodeSize(text, 'process');
-        currentNode = createNode('process', truncateText(text, 60), text, size.width, size.height);
+        
+        // Формируем полный код функции для отображения в контекстном меню
+        let functionBody = text + ' {\n';
+        if (stmt.body && typeof stmt.body === 'object' && stmt.body.type === 'Block') {
+            functionBody += convertASTBlockToString(stmt.body);
+        }
+        functionBody += '\n}';
+        
+        currentNode = createNode('process', truncateText(text, 60), text, size.width, size.height, functionBody, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
+        
+        // Добавляем метаданные для идентификации функции
+        if (currentNode) {
+            (currentNode as any).isFunction = true;
+            (currentNode as any).functionName = funcName;
+        }
         
         // Добавляем специальный класс или метаданные для main (будет использоваться в рендеринге)
         if (isMain && currentNode) {
@@ -544,12 +659,20 @@ function processASTStatement(
             const text = `${callee}(${args});`;
             
             const size = calculateNodeSize(text, nodeType);
-            currentNode = createNode(nodeType, truncateText(text, 50), text, size.width, size.height);
+            currentNode = createNode(nodeType, truncateText(text, 50), text, size.width, size.height, undefined, {
+                astElement: stmt,
+                language: 'c',
+                nodeType: stmtType
+            });
         } else {
             // Другое выражение
             const text = convertExprToString(expr) + ';';
             const size = calculateNodeSize(text, 'process');
-            currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height);
+            currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height, undefined, {
+                astElement: stmt,
+                language: 'c',
+                nodeType: stmtType
+            });
         }
         
         previousExitNodes.forEach(prevExit => {
@@ -568,7 +691,11 @@ function processASTStatement(
         const valueText = stmt.value ? convertExprToString(stmt.value) : '';
         const text = valueText ? `return ${valueText};` : 'return;';
         const size = calculateNodeSize(text, 'process');
-        currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height);
+        currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         previousExitNodes.forEach(prevExit => {
             const normalized = normalizeExitNode(prevExit);
@@ -583,7 +710,11 @@ function processASTStatement(
         exitNodes = [currentNode];
     } else if (stmtType === 'BreakStmt') {
         // Break statement
-        currentNode = createNode('process', 'break;', 'break;');
+        currentNode = createNode('process', 'break;', 'break;', undefined, undefined, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         previousExitNodes.forEach(prevExit => {
             const normalized = normalizeExitNode(prevExit);
@@ -606,7 +737,11 @@ function processASTStatement(
         }
         
         const size = calculateNodeSize(text, 'process');
-        currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height);
+        currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         previousExitNodes.forEach(prevExit => {
             const normalized = normalizeExitNode(prevExit);
@@ -627,7 +762,11 @@ function processASTStatement(
         const text = `struct ${structName} {\n${fieldsText}\n};`;
         
         const size = calculateNodeSize(text, 'process');
-        currentNode = createNode('process', truncateText(text, 60), text, size.width, size.height);
+        currentNode = createNode('process', truncateText(text, 60), text, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         previousExitNodes.forEach(prevExit => {
             const normalized = normalizeExitNode(prevExit);
@@ -647,7 +786,11 @@ function processASTStatement(
         const text = `typedef ${typeName} ${alias};`;
         
         const size = calculateNodeSize(text, 'process');
-        currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height);
+        currentNode = createNode('process', truncateText(text, 50), text, size.width, size.height, undefined, {
+            astElement: stmt,
+            language: 'c',
+            nodeType: stmtType
+        });
         
         previousExitNodes.forEach(prevExit => {
             const normalized = normalizeExitNode(prevExit);
@@ -718,7 +861,25 @@ export function parseCToFlowchart(
                 
                 const isMain = funcName === 'main';
                 const size = calculateNodeSize(funcText, 'process');
-                const funcNode = createNode('process', truncateText(funcText, 60), funcText, size.width, size.height);
+                
+                // Формируем полный код функции для отображения в контекстном меню
+                let functionBody = funcText + ' {\n';
+                if (stmt.body && typeof stmt.body === 'object' && stmt.body.type === 'Block') {
+                    functionBody += convertASTBlockToString(stmt.body);
+                }
+                functionBody += '\n}';
+                
+                const funcNode = createNode('process', truncateText(funcText, 60), funcText, size.width, size.height, functionBody, {
+                    astElement: stmt,
+                    language: 'c',
+                    nodeType: 'FunctionDecl'
+                });
+                
+                // Добавляем метаданные для идентификации функции
+                if (funcNode) {
+                    (funcNode as any).isFunction = true;
+                    (funcNode as any).functionName = funcName;
+                }
                 
                 // Для main функции добавляем флаг
                 if (isMain) {

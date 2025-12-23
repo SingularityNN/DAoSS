@@ -684,6 +684,10 @@ export const api = {
   async getLanguages(): Promise<Language[]> {
     return fetchWithAuth<Language[]>('/languages', {
       method: 'GET',
+  async generateCode(representation: any, language: string): Promise<{ success: boolean; code?: string; error?: string }> {
+    return fetchWithAuth<{ success: boolean; code?: string; error?: string }>('/parser/generate', {
+      method: 'POST',
+      body: JSON.stringify({ Representation: representation, Language: language }),
     });
   },
 };
